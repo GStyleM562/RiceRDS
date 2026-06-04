@@ -124,4 +124,38 @@ void main() {
       expect(m.handOf(0).length, before - 1);
     });
   });
+
+  group('OnlineMatch · cada jugador usa SU propio mazo y núcleo', () {
+    test('las manos salen del mazo correcto durante toda la partida', () {
+      // Mazos claramente distintos: p0 sólo CORTAFUEGOS (núcleo SENTINEL),
+      // p1 sólo EXPLOIT (núcleo WRAITH). Las subrutinas también difieren.
+      final deck0 = Deck(name: 'FW', nucleoId: 'sentinel', rut: {'fw_base': 10}, sub: {'overclock': 20});
+      final deck1 = Deck(name: 'XP', nucleoId: 'wraith', rut: {'xp_base': 10}, sub: {'throttle': 20});
+      final m = OnlineMatch(
+        nuc0: kNucById[deck0.nucleoId]!, deck0: deck0,
+        nuc1: kNucById[deck1.nucleoId]!, deck1: deck1,
+        rng: Random(2),
+      );
+
+      // El núcleo de cada jugador es el de SU mazo.
+      expect(m.p[0].nuc.id, 'sentinel');
+      expect(m.p[1].nuc.id, 'wraith');
+
+      var guard = 0;
+      while (!m.gameOver && guard++ < 300) {
+        // Toda Rutina/Subrutina en mano proviene del mazo de ese jugador.
+        for (final c in m.handOf(0)) {
+          expect(c.defId, anyOf('fw_base', 'overclock'), reason: 'p0 robó algo ajeno a su mazo');
+        }
+        for (final c in m.handOf(1)) {
+          expect(c.defId, anyOf('xp_base', 'throttle'), reason: 'p1 robó algo ajeno a su mazo');
+        }
+        m.submitPlay(0, m.defaultSubmissionFor(0));
+        m.submitPlay(1, m.defaultSubmissionFor(1));
+        m.resolveRound();
+        if (!m.gameOver) m.advanceRound();
+      }
+      expect(m.gameOver, isTrue);
+    });
+  });
 }
