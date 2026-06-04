@@ -1,0 +1,136 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
+<title>NODEHACK :: PROGRAM_NULL</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="game.css" />
+</head>
+<body>
+<div id="stage">
+  <div id="device">
+    <div id="root"></div>
+  </div>
+</div>
+
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+<!-- data first (plain JS), then components (babel) -->
+<script src="game-data.js"></script>
+<script type="text/babel" src="game-matrix.jsx"></script>
+<script type="text/babel" src="game-cards.jsx"></script>
+<script type="text/babel" src="game-menu.jsx"></script>
+<script type="text/babel" src="game-deck.jsx"></script>
+<script type="text/babel" src="game-match.jsx"></script>
+<script type="text/babel">
+const { useState, useEffect } = React;
+const { nucleoOf } = window.NH_DECK_HELPERS;
+
+const DECKS_KEY = 'nh_decks_v1';
+const DEFAULT_DECKS = [{
+  id: 'd1', name: 'GUARDIÁN', nucleoId: 'sentinel',
+  rut: { fw_base: 4, xp_base: 3, pl_base: 2, null_sh: 1 },
+  sub: { overclock: 5, throttle: 5, cuarentena: 4, mirror: 3, sigkill: 2, forkbomb: 1 },
+  favorite: true,
+}, {
+  id: 'd2', name: 'PULSO FRÍO', nucleoId: 'echo',
+  rut: { pl_base: 4, pl_emp: 2, fw_base: 3, null_sh: 1 },
+  sub: { overclock: 4, throttle: 4, mirror: 4, cuarentena: 4, sigkill: 2, forkbomb: 2 },
+  favorite: false,
+}];
+
+function loadDecks() {
+  try { const s = localStorage.getItem(DECKS_KEY); if (s) return JSON.parse(s); } catch (e) {}
+  return DEFAULT_DECKS;
+}
+
+function App() {
+  const [screen, setScreen] = useState('menu');
+  const [nucleo, setNucleo] = useState(window.NH.NUCLEOS[0]);
+  const [flush, setFlush] = useState({ outcome: 'win', meta: null });
+  const [decks, setDecks] = useState(loadDecks);
+  const [editingDeck, setEditingDeck] = useState(null); // draft o copia en edición
+
+  useEffect(() => { try { localStorage.setItem(DECKS_KEY, JSON.stringify(decks)); } catch (e) {} }, [decks]);
+
+  const favDeck = decks.find(d => d.favorite && window.NH_DECK_HELPERS.deckReady(d))
+    || decks.find(d => d.favorite) || decks.find(d => window.NH_DECK_HELPERS.deckReady(d)) || decks[0];
+  const matchNucleo = favDeck ? nucleoOf(favDeck.nucleoId) : nucleo;
+
+  const go = (s) => setScreen(s);
+
+  // ---- deck ops ----
+  const newDeck = () => {
+    setEditingDeck({ id: 'd' + Date.now(), name: '', nucleoId: 'sentinel', rut: {}, sub: {}, favorite: false });
+    go('builder');
+  };
+  const editDeck = (id) => { const d = decks.find(x => x.id === id); if (d) { setEditingDeck({ ...d }); go('builder'); } };
+  const saveDeck = (d) => {
+    setDecks(prev => prev.some(x => x.id === d.id) ? prev.map(x => x.id === d.id ? d : x) : [...prev, d]);
+    setEditingDeck(null); go('decks');
+  };
+  const toggleFav = (id) => setDecks(prev => prev.map(x => x.id === id ? { ...x, favorite: !x.favorite } : x));
+  const delDeck = (id) => setDecks(prev => prev.filter(x => x.id !== id));
+
+  return (
+    <>
+      {screen === 'menu' && (
+        <MenuScreen
+          nucleo={nucleo} decks={decks} favDeck={favDeck}
+          onPlay={() => go('match')}
+          onDeck={() => go('decks')}
+          onNucleo={() => go('nucleo')}
+        />
+      )}
+      {screen === 'nucleo' && (
+        <NucleoScreen onBack={() => go('menu')} nucleo={nucleo} setNucleo={setNucleo} />
+      )}
+      {screen === 'decks' && (
+        <DecksScreen decks={decks} onBack={() => go('menu')}
+          onNew={newDeck} onEdit={editDeck} onToggleFav={toggleFav} onDelete={delDeck} />
+      )}
+      {screen === 'builder' && editingDeck && (
+        <DeckBuilderScreen deck={editingDeck} onSave={saveDeck} onCancel={() => { setEditingDeck(null); go('decks'); }} />
+      )}
+      {screen === 'match' && (
+        <MatchScreen
+          nucleo={matchNucleo}
+          onExit={() => go('menu')}
+          onFlush={(outcome, meta) => { setFlush({ outcome, meta }); go('flush'); }}
+        />
+      )}
+      {screen === 'flush' && (
+        <FlushScreen
+          outcome={flush.outcome} meta={flush.meta}
+          onMenu={() => go('menu')}
+          onAgain={() => go('match')}
+        />
+      )}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+
+// ---- Device fit-to-viewport scaling ----
+function fitDevice() {
+  const dev = document.getElementById('device');
+  const pad = 24;
+  const sw = (window.innerWidth - pad) / 390;
+  const sh = (window.innerHeight - pad) / 844;
+  const s = Math.min(sw, sh, 1.15);
+  dev.style.transform = `scale(${s})`;
+}
+window.addEventListener('resize', fitDevice);
+fitDevice();
+</script>
+<style>
+  #stage{width:100vw;height:100vh;display:flex;align-items:center;justify-content:center;background:#000}
+</style>
+</body>
+</html>

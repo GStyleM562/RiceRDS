@@ -1,0 +1,17 @@
+name: nodehack_server
+description: >-
+  Servidor PVP autoritativo de NODEHACK :: PROGRAM_NULL. WebSocket, salas por
+  código, estado en memoria (escala-a-cero). Reusa el motor compartido para que
+  el resultado sea imposible de falsificar desde el cliente.
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dependencies:
+  nodehack_engine:
+    path: ../packages/nodehack_engine
+
+dev_dependencies:
+  test: ^1.24.0

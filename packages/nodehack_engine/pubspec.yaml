@@ -1,0 +1,12 @@
+name: nodehack_engine
+description: >-
+  Motor de reglas puro (Dart, sin Flutter) de NODEHACK :: PROGRAM_NULL.
+  Reutilizable por el app (modo CPU) y por el servidor PVP (autoritativo).
+version: 0.1.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dev_dependencies:
+  test: ^1.24.0

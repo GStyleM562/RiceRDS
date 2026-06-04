@@ -1,0 +1,567 @@
+# Juego Táctico de Resolución Simultánea basado en Piedra-Papel-Tijera
+
+## Concepto General
+
+El proyecto busca tomar la mecánica universal de Piedra-Papel-Tijera y convertirla en un juego de estrategia competitivo para dispositivos móviles mediante construcción de mazos, cartas de alteración, resolución simultánea y preparación de turnos.
+
+La intención NO es crear un clon de juegos de cartas existentes, sino un sistema donde el núcleo siga siendo Piedra-Papel-Tijera, pero profundamente expandido mediante decisiones estratégicas, personalización y predicción del rival.
+
+---
+
+# Filosofía del Juego
+
+El jugador no reacciona constantemente.
+
+En lugar de eso:
+
+1. Prepara su turno.
+2. Configura sus cartas.
+3. Presiona READY.
+4. El rival hace lo mismo.
+5. El sistema resuelve automáticamente todo lo programado.
+
+La sensación buscada es:
+
+> "He preparado mi estrategia. Ahora observemos qué sucede."
+
+Esto genera una experiencia similar a dos programas ejecutándose simultáneamente.
+
+---
+
+# Objetivos de Diseño
+
+## Objetivos Principales
+
+* Fácil de aprender.
+* Difícil de dominar.
+* Partidas cortas.
+* Profundidad competitiva.
+* Compatible con móvil.
+* Compatible con PvP asíncrono.
+* Compatible con espectador y repeticiones.
+* Fuerte personalización mediante construcción de mazos.
+
+---
+
+# Duración Objetivo
+
+Partida promedio:
+
+* 3 a 8 minutos.
+
+Ideal para:
+
+* Móvil.
+* Ranked.
+* Sesiones rápidas.
+
+---
+
+# Sistema de Mazos
+
+## Recomendación: Dos Mazos Separados
+
+### Motivo
+
+Un único mazo puede provocar situaciones donde el jugador robe únicamente cartas de soporte o alteración y no tenga una jugada válida.
+
+Eso suele generar frustración.
+
+Separar los mazos garantiza consistencia.
+
+---
+
+# Mazo de Acción
+
+Contiene únicamente las cartas principales del juego.
+
+Ejemplos iniciales:
+
+* Piedra
+* Papel
+* Tijera
+
+Estas cartas determinan el enfrentamiento base.
+
+---
+
+## Tamaño recomendado
+
+10 cartas.
+
+---
+
+## Función
+
+Garantizar que siempre exista una jugada posible.
+
+---
+
+# Mazo de Alteración
+
+Contiene cartas de soporte.
+
+Ejemplos:
+
+* Cambiar resultado.
+* Alterar prioridad.
+* Proteger cartas.
+* Invertir efectos.
+* Retrasar resolución.
+* Copiar habilidades.
+* Modificar símbolos.
+
+---
+
+## Tamaño recomendado
+
+20 cartas.
+
+---
+
+## Función
+
+Modificar el resultado del enfrentamiento.
+
+---
+
+# Tamaño Total del Deck
+
+30 cartas.
+
+Distribución recomendada:
+
+* 10 Acción
+* 20 Alteración
+
+---
+
+# Mano Inicial
+
+Al comenzar la partida:
+
+* 2 cartas de Acción
+* 3 cartas de Alteración
+
+Total:
+
+5 cartas.
+
+---
+
+# Robo por Turno
+
+Cada ronda:
+
+* +1 Acción
+* +2 Alteración
+
+Ventajas:
+
+* Siempre existe una jugada válida.
+* No existen manos completamente inútiles.
+* Hay opciones estratégicas cada turno.
+
+---
+
+# Condición de Victoria
+
+Formato recomendado:
+
+Mejor de 5 rondas.
+
+El primer jugador en conseguir 3 puntos gana la partida.
+
+---
+
+# Flujo de Ronda
+
+## Fase 1 — Robo
+
+Cada jugador roba:
+
+* 1 Acción
+* 2 Alteración
+
+---
+
+## Fase 2 — Preparación
+
+Cada jugador selecciona:
+
+Obligatorio:
+
+* 1 Carta de Acción
+
+Opcional:
+
+* 0 a 2 Cartas de Alteración
+
+---
+
+## Fase 3 — Confirmación
+
+El jugador presiona READY.
+
+Cuando ambos jugadores están listos:
+
+La ronda queda bloqueada.
+
+Ya no se pueden modificar decisiones.
+
+---
+
+## Fase 4 — Revelación
+
+Ambos jugadores muestran simultáneamente:
+
+* Carta de Acción
+* Cartas de Alteración utilizadas
+
+---
+
+## Fase 5 — Resolución
+
+Las cartas se resuelven automáticamente.
+
+---
+
+## Fase 6 — Resultado
+
+Se calcula:
+
+* Ganador de la ronda.
+* Puntos obtenidos.
+* Activaciones especiales.
+
+---
+
+## Fase 7 — Limpieza
+
+Las cartas utilizadas se envían al descarte.
+
+Comienza una nueva ronda.
+
+---
+
+# Sistema de Prioridad
+
+## Speed
+
+Cada carta posee un atributo:
+
+Speed
+
+Ejemplo:
+
+* Speed 1
+* Speed 5
+* Speed 10
+
+Las cartas con mayor Speed se resuelven primero.
+
+---
+
+# Resolución
+
+Ejemplo:
+
+Speed 10
+
+↓
+
+Speed 9
+
+↓
+
+Speed 8
+
+↓
+
+...
+
+↓
+
+Speed 1
+
+---
+
+# Sistema de Desempate
+
+Cuando dos cartas poseen la misma Speed:
+
+Se consulta el Personaje Principal del jugador.
+
+---
+
+# Personajes Principales
+
+Cada jugador selecciona un personaje antes de iniciar la partida.
+
+Tipos iniciales:
+
+* Piedra
+* Papel
+* Tijera
+
+---
+
+# Regla de Prioridad
+
+Si ocurre un empate:
+
+Piedra vence a Tijera.
+
+Tijera vence a Papel.
+
+Papel vence a Piedra.
+
+El personaje ganador obtiene prioridad.
+
+---
+
+# Beneficios del Sistema
+
+* Genera identidad.
+* Genera metajuego.
+* Influye incluso antes de comenzar la partida.
+* Permite estrategias especializadas.
+
+---
+
+# Ejemplos de Arquetipos
+
+## Deck Tijera Pura
+
+Características:
+
+* Gran cantidad de Tijeras.
+* Muchas alteraciones para cambiar derrotas por victorias.
+
+Fortaleza:
+
+* Muy agresivo.
+
+Debilidad:
+
+* Vulnerable a bloqueos.
+
+---
+
+## Deck Control
+
+Objetivo:
+
+No ganar mediante símbolos.
+
+Ganar anulando al rival.
+
+Herramientas:
+
+* Cancelaciones.
+* Bloqueos.
+* Interrupciones.
+
+---
+
+## Deck Caos
+
+Objetivo:
+
+Introducir incertidumbre.
+
+Utiliza:
+
+* Efectos aleatorios.
+* Intercambios.
+* Modificaciones inesperadas.
+
+---
+
+## Deck Predicción
+
+Objetivo:
+
+Castigar patrones.
+
+Ejemplos:
+
+* Castigar repetir símbolo.
+* Castigar repetir estrategia.
+* Obtener ventaja por lectura del rival.
+
+---
+
+## Deck Retardo
+
+Objetivo:
+
+Preparar jugadas futuras.
+
+Ejemplos:
+
+* Efectos que activan una ronda después.
+* Trampas temporizadas.
+* Alteraciones persistentes.
+
+---
+
+# Riesgo Detectado
+
+## Problema Principal
+
+Si las cartas de Acción son únicamente:
+
+* Piedra
+* Papel
+* Tijera
+
+Existe el riesgo de que:
+
+> El verdadero juego termine siendo únicamente las cartas de Alteración.
+
+---
+
+# Solución Recomendada
+
+Crear variantes avanzadas.
+
+---
+
+## Piedra Pesada
+
+Propiedades:
+
+* Gana contra Tijera.
+* Inmune a efectos de Speed baja.
+
+---
+
+## Papel Flexible
+
+Propiedades:
+
+* Si pierde, roba una carta.
+
+---
+
+## Tijera Rápida
+
+Propiedades:
+
+* Obtiene Speed adicional.
+
+---
+
+# Distribución Ideal de Habilidad
+
+Objetivo recomendado:
+
+60% Estrategia
+
+25% Lectura del Rival
+
+15% Suerte
+
+---
+
+# Evitar Exceso de RNG
+
+Evitar acumular:
+
+* Robo aleatorio.
+* Resultado aleatorio.
+* Efectos aleatorios.
+* Objetivos aleatorios.
+
+Demasiada aleatoriedad puede hacer sentir que el jugador no controla el resultado.
+
+---
+
+# Compatibilidad con PvP Asíncrono
+
+El sistema de READY permite:
+
+* Jugar sin conexión simultánea.
+* Resolver partidas más tarde.
+* Crear Ghost Battles.
+* Compartir repeticiones.
+
+---
+
+# Compatibilidad con Ranked
+
+El formato favorece:
+
+* Escalera competitiva.
+* Temporadas.
+* Clasificaciones.
+* Torneos.
+
+---
+
+# Preguntas Pendientes
+
+## Economía
+
+* ¿Existirán costes para jugar cartas?
+* ¿Existirá energía?
+
+---
+
+## Construcción
+
+* ¿Cuántas copias máximas por carta?
+* ¿Existirán restricciones?
+
+---
+
+## Colección
+
+* ¿Habrá rarezas?
+* ¿Habrá cartas legendarias?
+
+---
+
+## Personajes
+
+* ¿Tendrán habilidades únicas?
+* ¿Solo afectarán desempates?
+
+---
+
+## Competitivo
+
+* ¿Existirán bans?
+* ¿Existirá rotación de cartas?
+
+---
+
+## PvE
+
+* ¿Habrá campaña?
+* ¿Habrá desafíos?
+* ¿Habrá jefes?
+
+---
+
+# Conclusión
+
+La propuesta deja de sentirse como un simple Piedra-Papel-Tijera y comienza a convertirse en un juego táctico de resolución simultánea donde:
+
+* La preparación es tan importante como la ejecución.
+* La construcción del deck define la identidad del jugador.
+* La lectura del rival es una habilidad real.
+* Las rondas son rápidas.
+* El sistema es ideal para dispositivos móviles.
+
+La combinación de:
+
+* Acción obligatoria.
+* Alteraciones opcionales.
+* Resolución simultánea.
+* Sistema de Speed.
+* Personajes de prioridad.
+* Construcción de mazos.
+
+puede generar un juego competitivo con una identidad propia muy fuerte y diferenciada.

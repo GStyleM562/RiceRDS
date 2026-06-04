@@ -1,0 +1,16 @@
+# Render Blueprint — despliega el servidor PVP (Docker) en el plan GRATUITO.
+# Render construye desde la RAÍZ del repo usando el Dockerfile del servidor
+# (que incluye el paquete del motor, dependencia `path`).
+#
+# Uso: en Render → New → Blueprint → conecta este repo. Detecta este archivo y
+# crea el servicio automáticamente.
+services:
+  - type: web
+    name: nodehack-server
+    runtime: docker
+    plan: free
+    region: ohio # US-East (más cerca de LATAM que Oregon). Cambiable en el panel.
+    dockerfilePath: ./nodehack_server/Dockerfile
+    dockerContext: . # contexto = raíz del repo (por la dependencia path)
+    healthCheckPath: / # el servidor responde 200 en cualquier ruta no-WebSocket
+    autoDeploy: true # redepliega al hacer push a la rama conectada

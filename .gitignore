@@ -1,0 +1,28 @@
+# Artefactos de build (Dart / Flutter) — NO subir al repo.
+.dart_tool/
+.packages
+build/
+*.apk
+*.aab
+*.exe
+*.log
+
+# Flutter / Android / iOS locales
+nodehack_app/.flutter-plugins
+nodehack_app/.flutter-plugins-dependencies
+nodehack_app/android/.gradle/
+nodehack_app/android/app/debug/
+nodehack_app/android/local.properties
+nodehack_app/ios/Pods/
+nodehack_app/ios/.symlinks/
+
+# IDE / editor
+.idea/
+.vscode/
+*.iml
+
+# Sistema operativo
+.DS_Store
+Thumbs.db
+
+# Nota: pubspec.lock SÍ se versiona (builds reproducibles del app y el servidor).

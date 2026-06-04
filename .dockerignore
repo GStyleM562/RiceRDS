@@ -1,0 +1,13 @@
+# Sólo el servidor + el motor entran al build de la imagen. Excluye lo demás
+# para que el contexto sea pequeño y el build rápido (aplica también en Render).
+nodehack_app/
+docs/
+**/build/
+**/.dart_tool/
+**/*.apk
+**/*.aab
+**/*.exe
+**/*.log
+.git/
+.idea/
+.vscode/

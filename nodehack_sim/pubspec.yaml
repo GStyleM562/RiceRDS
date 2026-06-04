@@ -1,0 +1,12 @@
+name: nodehack_sim
+description: >-
+  Motor de reglas headless + simulador de balance para NODEHACK :: PROGRAM_NULL.
+  El paquete lib/engine es Flutter-agnóstico y reutilizable en el futuro app.
+version: 0.3.0
+publish_to: none
+
+environment:
+  sdk: ^3.0.0
+
+dev_dependencies:
+  test: ^1.24.0
