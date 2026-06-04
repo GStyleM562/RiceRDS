@@ -10,9 +10,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nodehack_engine/cards.dart';
 import 'package:nodehack_engine/deck.dart';
 
-/// URL por defecto del servidor PVP. Cámbiala por la `wss://…/ws` desplegada
-/// (Cloud Run) o por la IP de tu PC en la LAN para pruebas entre dispositivos.
-const String kDefaultServerUrl = 'ws://localhost:8080/ws';
+/// URL por defecto del servidor PVP (desplegado en Render). Para pruebas en LAN
+/// puedes cambiarla en el app por `ws://IP-de-tu-PC:8080/ws`.
+const String kDefaultServerUrl = 'wss://nodehack-server.onrender.com/ws';
 
 class AppState extends ChangeNotifier {
   static const _kDecks = 'nh_decks';

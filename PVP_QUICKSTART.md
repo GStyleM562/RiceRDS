@@ -13,6 +13,14 @@ nodehack_app/               ← la app Flutter (CPU + online)
 nodehack_server/            ← el servidor PVP (Dart, WebSocket)
 ```
 
+## Jugar por internet (servidor ya desplegado)
+
+El servidor está en Render: **`wss://nodehack-server.onrender.com/ws`** (ya es el
+valor por defecto del app). Solo instala el APK, entra a **JUGAR ONLINE**, uno
+**CREA SALA** y comparte el código de 4 letras; el otro **UNIRSE** y lo escribe.
+Funciona desde cualquier red. *(Nota: en el plan free el servidor se duerme tras
+~15 min sin uso; la primera conexión tras dormir tarda ~30–60 s en despertar.)*
+
 ## Probar PVP en LOCAL (sin desplegar)
 
 1. **Arranca el servidor** en tu PC:

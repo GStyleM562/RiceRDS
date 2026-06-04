@@ -14,3 +14,9 @@ services:
     dockerContext: . # contexto = raíz del repo (por la dependencia path)
     healthCheckPath: / # el servidor responde 200 en cualquier ruta no-WebSocket
     autoDeploy: true # redepliega al hacer push a la rama conectada
+    # Solo reconstruye si cambia el servidor o el motor (no por cambios del app).
+    buildFilters:
+      paths:
+        - nodehack_server/**
+        - packages/nodehack_engine/**
+        - render.yaml
