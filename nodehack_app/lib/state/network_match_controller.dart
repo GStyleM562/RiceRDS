@@ -40,8 +40,10 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
   String? roomCode;
   String? token;
   int playerIndex = 0;
+  @override
   String oppName = 'RIVAL';
   String? errorMsg;
+  String? _outcome;
   bool oppConnected = true;
   bool _submitted = false;
   bool _oppReady = false;
@@ -146,6 +148,7 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
         notifyListeners();
       case S2C.gameOver:
         _gameOver = true;
+        _outcome = (m['outcome'] as String?) ?? 'win';
         stage = OnlineStage.ended;
         notifyListeners();
         // Forfeit: el rival se rindió o se desconectó.
@@ -211,6 +214,7 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
       }
       if (pub.gameOver) {
         _gameOver = true;
+        _outcome = pub.outcome;
         // Pausa amplia para ver el último golpe y quién ganó la ronda/partida.
         _after(2600, () => onFlush(MatchSummary(
               outcome: pub.outcome ?? 'lose',
@@ -333,6 +337,8 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
   List<Winner> get history => _history;
   @override
   bool get gameOver => _gameOver;
+  @override
+  String? get outcome => _outcome;
 
   // ===================== MatchView: acciones =====================
   @override

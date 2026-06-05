@@ -1,3 +1,5 @@
+import 'dart:math';
+
 import 'package:flutter/material.dart';
 
 import 'package:nodehack_engine/card_instance.dart';
@@ -129,7 +131,10 @@ class _MatchScreenState extends State<MatchScreen> {
                 Column(children: [
                   _topbar(),
                   _battleTrack(),
-                  HitEffects(active: c.hit?.side == 'opp', child: _oppZone()),
+                  // Al GANAR la partida, el rival se "desconecta" en el tablero.
+                  (c.gameOver && c.outcome == 'win')
+                      ? _DisconnectFx(oppName: c.oppName, child: _oppZone())
+                      : HitEffects(active: c.hit?.side == 'opp', child: _oppZone()),
                   _center(),
                   const Spacer(),
                   HitEffects(active: c.hit?.side == 'you', child: _youZone()),
@@ -810,4 +815,97 @@ class _MatBgPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _MatBgPainter old) => false;
+}
+
+/// Efecto de "desconexión" del rival en el TABLERO (cuando ganas la partida):
+/// breve estado intacto → glitch (RGB + cortes) con "SEÑAL PERDIDA" → colapso/apagado.
+class _DisconnectFx extends StatefulWidget {
+  final Widget child;
+  final String oppName;
+  const _DisconnectFx({required this.child, required this.oppName});
+
+  @override
+  State<_DisconnectFx> createState() => _DisconnectFxState();
+}
+
+class _DisconnectFxState extends State<_DisconnectFx> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1800))..forward();
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final t = _c.value;
+        if (t < .66) {
+          // Intacto (0..0.22) → glitch creciente (0.22..0.66).
+          final g = ((t - .22) / .44).clamp(0.0, 1.0);
+          final jitter = g <= 0 ? 0.0 : sin(t * 90) * 4 * g;
+          return Stack(children: [
+            Transform.translate(offset: Offset(jitter, 0), child: widget.child),
+            if (g > 0)
+              Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _GlitchPainter(t, g)))),
+            if (g > .25)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Center(
+                    child: Opacity(
+                      opacity: (sin(t * 55).abs()).clamp(.2, 1.0),
+                      child: Text('▓ ${widget.oppName} :: SEÑAL PERDIDA ▓',
+                          style: NH.mono(size: 11, weight: FontWeight.w700, color: NH.xp, spacing: 1.5)
+                              .copyWith(shadows: [Shadow(color: NH.a(NH.xp, .7), blurRadius: 10)])),
+                    ),
+                  ),
+                ),
+              ),
+          ]);
+        }
+        // Colapso/apagado: se cierra a una línea y se desvanece.
+        final k = ((t - .66) / .34).clamp(0.0, 1.0);
+        return Opacity(
+          opacity: 1 - k,
+          child: Transform(
+            alignment: Alignment.center,
+            transform: Matrix4.diagonal3Values(1.0, (1 - k).clamp(0.02, 1.0), 1.0),
+            child: widget.child,
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _GlitchPainter extends CustomPainter {
+  final double t; // tiempo global (para variar el ruido por frame)
+  final double g; // intensidad 0..1
+  _GlitchPainter(this.t, this.g);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rnd = Random((t * 90).floor());
+    final n = (6 + g * 12).round();
+    for (var i = 0; i < n; i++) {
+      final y = rnd.nextDouble() * size.height;
+      final h = 2 + rnd.nextDouble() * 11;
+      final dx = (rnd.nextDouble() - .5) * 26 * g;
+      final col = rnd.nextBool() ? NH.xp : NH.fw; // cortes rojo/cian (RGB split)
+      canvas.drawRect(
+        Rect.fromLTWH(dx, y, size.width, h),
+        Paint()
+          ..color = NH.a(col, .4 * g)
+          ..blendMode = BlendMode.screen,
+      );
+    }
+    canvas.drawRect(Offset.zero & size, Paint()..color = NH.a(NH.xp, .07 * g));
+  }
+
+  @override
+  bool shouldRepaint(covariant _GlitchPainter old) => true;
 }

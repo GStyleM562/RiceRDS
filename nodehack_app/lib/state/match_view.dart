@@ -86,6 +86,10 @@ abstract class MatchView implements Listenable {
 
   // Fin de partida
   bool get gameOver;
+  String? get outcome; // 'win' | 'lose' cuando gameOver; null si sigue
+
+  // Nombre del rival (para mensajes/animaciones). 'RIVAL' por defecto.
+  String get oppName;
 
   // Acciones del jugador
   void placeActive(CardInstance c);

@@ -96,6 +96,10 @@ class MatchController extends ChangeNotifier implements MatchView {
   bool get canCompile => engine.canCompile;
   @override
   bool get gameOver => engine.gameOver;
+  @override
+  String? get outcome => engine.outcome;
+  @override
+  String get oppName => 'proc_0x4F';
 
   @override
   void placeActive(CardInstance c) {
