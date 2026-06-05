@@ -62,7 +62,7 @@ void main() {
 
   testWidgets('MatchScreen monta sin overflow', (t) async {
     final ctrl = MatchController(
-      deckYou: Deck.starter(), onFlush: (_, round) {}, seed: 1,
+      deckYou: Deck.starter(), onFlush: (_) {}, seed: 1,
     );
     await _pump(t, MatchScreen(ctrl: ctrl, onExit: () {}, onInspect: (_) {}));
     expect(tester(t), isNull);
@@ -73,7 +73,7 @@ void main() {
     final flushes = <String>[];
     final ctrl = MatchController(
       deckYou: Deck.starter(), // su Núcleo viene del mazo
-      onFlush: (outcome, round) => flushes.add(outcome),
+      onFlush: (s) => flushes.add(s.outcome),
       seed: 5,
     );
     await t.binding.setSurfaceSize(const Size(390, 844));
@@ -94,7 +94,7 @@ void main() {
         await t.pump();
       }
     }
-    await t.pump(const Duration(milliseconds: 1000)); // dispara onFlush (+900ms)
+    await t.pump(const Duration(milliseconds: 2800)); // dispara onFlush (+2600ms)
 
     expect(ctrl.engine.gameOver, isTrue);
     expect(ctrl.engine.integrityYou == 0 || ctrl.engine.integrityOpp == 0, isTrue);

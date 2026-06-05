@@ -4,6 +4,7 @@ import 'package:nodehack_engine/card_instance.dart';
 import 'package:nodehack_engine/deck.dart';
 import 'state/app_state.dart';
 import 'state/match_controller.dart';
+import 'state/match_view.dart';
 import 'screens/deck_builder_screen.dart';
 import 'screens/deck_list_screen.dart';
 import 'screens/flush_screen.dart';
@@ -42,8 +43,7 @@ class _AppRootState extends State<AppRoot> {
   _Screen screen = _Screen.menu;
   int? _editIndex;
   MatchController? _match;
-  String _flushOutcome = 'win';
-  int _flushRound = 0;
+  MatchSummary _flushSummary = const MatchSummary(outcome: 'win', round: 0, history: []);
   bool _flushFromOnline = false;
   CardInstance? _zoom; // carta en modo "zoom" (lectura)
 
@@ -63,9 +63,8 @@ class _AppRootState extends State<AppRoot> {
     _flushFromOnline = false;
     _match = MatchController(
       deckYou: app.currentDeck,
-      onFlush: (outcome, round) {
-        _flushOutcome = outcome;
-        _flushRound = round;
+      onFlush: (summary) {
+        _flushSummary = summary;
         _go(_Screen.flush);
       },
     );
@@ -98,6 +97,9 @@ class _AppRootState extends State<AppRoot> {
         if (didPop) return;
         if (_zoom != null) {
           _hideZoom();
+        } else if (screen == _Screen.match || screen == _Screen.online) {
+          // La mesa/lobby manejan su propio "atrás" (confirmación de rendición).
+          return;
         } else if (screen != _Screen.menu) {
           _toMenu();
         }
@@ -192,17 +194,18 @@ class _AppRootState extends State<AppRoot> {
           onSetServerUrl: app.setServerUrl,
           onExit: _toMenu,
           onInspect: _showZoom,
-          onFlush: (outcome, round) {
+          onFlush: (summary) {
             _flushFromOnline = true;
-            _flushOutcome = outcome;
-            _flushRound = round;
+            _flushSummary = summary;
             _go(_Screen.flush);
           },
         );
       case _Screen.flush:
         return FlushScreen(
-          outcome: _flushOutcome,
-          round: _flushRound,
+          outcome: _flushSummary.outcome,
+          round: _flushSummary.round,
+          history: _flushSummary.history,
+          reason: _flushSummary.reason,
           onAgain: _flushFromOnline ? () => _go(_Screen.online) : _startMatch,
           onMenu: _toMenu,
         );

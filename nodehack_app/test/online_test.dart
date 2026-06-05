@@ -59,7 +59,7 @@ void main() {
           onSetName: (_) {},
           onSetServerUrl: (_) {},
           onExit: () {},
-          onFlush: (_, _) {},
+          onFlush: (_) {},
           onInspect: (_) {},
         ),
       ),
@@ -76,7 +76,7 @@ void main() {
       ws: fake,
       deckYou: Deck.starter(),
       playerName: 'OP',
-      onFlush: (o, _) => flushes.add(o),
+      onFlush: (s) => flushes.add(s.outcome),
     );
 
     // matchStart
@@ -151,7 +151,7 @@ void main() {
     final flushes = <String>[];
     final ctrl = NetworkMatchController(
       ws: fake, deckYou: Deck.starter(), playerName: 'OP',
-      onFlush: (o, _) => flushes.add(o),
+      onFlush: (s) => flushes.add(s.outcome),
     );
     fake.inject({'t': S2C.gameOver, 'outcome': 'win'});
     await Future<void>.delayed(const Duration(milliseconds: 700));

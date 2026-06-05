@@ -10,6 +10,20 @@ import 'package:nodehack_engine/cards.dart';
 import 'package:nodehack_engine/resolve.dart';
 import 'package:nodehack_engine/types.dart';
 
+/// Resumen de fin de partida que se entrega a la pantalla de resultados.
+class MatchSummary {
+  final String outcome; // 'win' | 'lose'
+  final int round;
+  final List<Winner> history; // ganador de cada ronda
+  final String? reason; // null = normal; 'opp_left' = rival se rindió/desconectó
+  const MatchSummary({
+    required this.outcome,
+    required this.round,
+    required this.history,
+    this.reason,
+  });
+}
+
 /// Fase visual de la ronda (progreso + textos de ayuda).
 class MatchPhase {
   final String id;

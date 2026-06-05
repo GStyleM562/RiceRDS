@@ -20,7 +20,7 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
   final GameSocket ws;
   final Deck deckYou;
   final String playerName;
-  final void Function(String outcome, int round) onFlush;
+  final void Function(MatchSummary) onFlush;
 
   NetworkMatchController({
     required this.ws,
@@ -148,7 +148,13 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
         _gameOver = true;
         stage = OnlineStage.ended;
         notifyListeners();
-        _after(600, () => onFlush((m['outcome'] as String?) ?? 'win', _round));
+        // Forfeit: el rival se rindió o se desconectó.
+        _after(600, () => onFlush(MatchSummary(
+              outcome: (m['outcome'] as String?) ?? 'win',
+              round: _round,
+              history: List.of(_history),
+              reason: 'opp_left',
+            )));
       case S2C.error:
         errorMsg = (m['message'] as String?) ?? 'error';
         if (!_matchStarted) stage = OnlineStage.error;
@@ -205,7 +211,12 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
       }
       if (pub.gameOver) {
         _gameOver = true;
-        _after(900, () => onFlush(pub.outcome ?? 'lose', pub.round));
+        // Pausa amplia para ver el último golpe y quién ganó la ronda/partida.
+        _after(2600, () => onFlush(MatchSummary(
+              outcome: pub.outcome ?? 'lose',
+              round: pub.round,
+              history: List.of(_history),
+            )));
       }
     });
   }

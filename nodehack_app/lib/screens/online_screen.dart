@@ -10,6 +10,7 @@ import 'package:nodehack_engine/card_instance.dart';
 import 'package:nodehack_engine/deck.dart';
 
 import '../net/ws_client.dart';
+import '../state/match_view.dart';
 import '../state/network_match_controller.dart';
 import '../theme/tokens.dart';
 import '../widgets/chrome.dart';
@@ -22,7 +23,7 @@ class OnlineScreen extends StatefulWidget {
   final void Function(String name) onSetName;
   final void Function(String url) onSetServerUrl;
   final VoidCallback onExit; // volver al menú
-  final void Function(String outcome, int round) onFlush;
+  final void Function(MatchSummary) onFlush;
   final void Function(CardInstance) onInspect;
 
   const OnlineScreen({
@@ -109,15 +110,26 @@ class _OnlineScreenState extends State<OnlineScreen> {
       return AnimatedBuilder(
         animation: ctrl,
         builder: (context, _) {
+          // En partida, la mesa maneja su propio "atrás" (confirmación de rendición).
           if (ctrl.matchStarted && !ctrl.gameOver) {
             return MatchScreen(ctrl: ctrl, onExit: _back, onInspect: widget.onInspect);
           }
-          return _lobbyStatus(ctrl);
+          return _lobbyScope(_lobbyStatus(ctrl));
         },
       );
     }
-    return _chooser();
+    return _lobbyScope(_chooser());
   }
+
+  // En el lobby, el "atrás" del sistema vuelve al menú (main le cede el control).
+  Widget _lobbyScope(Widget child) => PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (didPop, _) {
+          if (didPop) return;
+          _back();
+        },
+        child: child,
+      );
 
   // ---------------- Lobby ----------------
   Widget _shell({required Widget child}) => Stack(children: [

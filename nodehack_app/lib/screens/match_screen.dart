@@ -33,6 +33,7 @@ class _MatchScreenState extends State<MatchScreen> {
   _Drag? _drag;
   bool _dragActive = false; // el arrastre empieza tras mover el dedo (slop)
   String? _hover;
+  bool _confirmExit = false; // overlay "¿RENDIRSE?"
 
   MatchView get c => widget.ctrl;
   RenderBox? get _rootBox => _rootKey.currentContext?.findRenderObject() as RenderBox?;
@@ -102,46 +103,57 @@ class _MatchScreenState extends State<MatchScreen> {
     });
   }
 
+  void _requestExit() => setState(() => _confirmExit = true);
+
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: c,
-      builder: (context, _) {
-        final e = c;
-        return Listener(
-          onPointerMove: _onMove,
-          onPointerUp: _onUp,
-          behavior: HitTestBehavior.translucent,
-          child: Stack(
-            key: _rootKey,
-            children: [
-              Positioned.fill(child: Container(color: NH.cardBg, child: CustomPaint(painter: _MatBgPainter()))),
-              Column(children: [
-                _topbar(),
-                _battleTrack(),
-                HitEffects(active: c.hit?.side == 'opp', child: _oppZone()),
-                _center(),
-                const Spacer(),
-                HitEffects(active: c.hit?.side == 'you', child: _youZone()),
-              ]),
-              if (_drag != null && _dragActive)
-                Positioned(
-                  left: _drag!.pos.dx - 45,
-                  top: _drag!.pos.dy - 63,
-                  child: IgnorePointer(child: CardView(card: _drag!.card, width: 90, animate: false)),
-                ),
-              if (c.phase.id == 'programacion' && e.needsNullDeclaration) _nullPicker(),
-            ],
-          ),
-        );
+    // El "atrás" del sistema NO sale directo: abre la confirmación de rendición.
+    return PopScope(
+      canPop: false,
+      onPopInvokedWithResult: (didPop, _) {
+        if (didPop) return;
+        setState(() => _confirmExit = !_confirmExit);
       },
+      child: AnimatedBuilder(
+        animation: c,
+        builder: (context, _) {
+          final e = c;
+          return Listener(
+            onPointerMove: _onMove,
+            onPointerUp: _onUp,
+            behavior: HitTestBehavior.translucent,
+            child: Stack(
+              key: _rootKey,
+              children: [
+                Positioned.fill(child: Container(color: NH.cardBg, child: CustomPaint(painter: _MatBgPainter()))),
+                Column(children: [
+                  _topbar(),
+                  _battleTrack(),
+                  HitEffects(active: c.hit?.side == 'opp', child: _oppZone()),
+                  _center(),
+                  const Spacer(),
+                  HitEffects(active: c.hit?.side == 'you', child: _youZone()),
+                ]),
+                if (_drag != null && _dragActive)
+                  Positioned(
+                    left: _drag!.pos.dx - 45,
+                    top: _drag!.pos.dy - 63,
+                    child: IgnorePointer(child: CardView(card: _drag!.card, width: 90, animate: false)),
+                  ),
+                if (c.phase.id == 'programacion' && e.needsNullDeclaration) _nullPicker(),
+                if (_confirmExit) _confirmExitOverlay(),
+              ],
+            ),
+          );
+        },
+      ),
     );
   }
 
   Widget _topbar() => Padding(
         padding: const EdgeInsets.fromLTRB(14, NH.safe + 4, 14, 4),
         child: Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-          GestureDetector(onTap: widget.onExit, child: Text('‹ RENDIRSE', style: NH.mono(size: 11, color: NH.ink2, spacing: 1))),
+          GestureDetector(onTap: _requestExit, child: Text('‹ RENDIRSE', style: NH.mono(size: 11, color: NH.ink2, spacing: 1))),
           Text('RONDA ${c.round.toString().padLeft(2, '0')}', style: NH.mono(size: 11, color: NH.ink2, spacing: 2)),
           Text('0x${(c.round * 4079).toRadixString(16).toUpperCase()}', style: NH.mono(size: 10, color: NH.dim2)),
         ]),
@@ -688,35 +700,94 @@ class _MatchScreenState extends State<MatchScreen> {
         ),
       );
 
+  // Selector OBLIGATORIO del tipo del NULL-SHARD. Modal: absorbe los toques para
+  // que no se pueda interactuar con el tablero hasta declarar (firewall/exploit/signal).
   Widget _nullPicker() => Positioned.fill(
-        child: Container(
-          color: NH.a(const Color(0xFF020408), .82),
-          child: Center(
-            child: Container(
-              padding: const EdgeInsets.all(18),
-              decoration: BoxDecoration(color: const Color(0xFF0A0712), borderRadius: BorderRadius.circular(12), border: Border.all(color: NH.nl), boxShadow: [BoxShadow(color: NH.a(NH.nl, .35), blurRadius: 40)]),
-              child: Column(mainAxisSize: MainAxisSize.min, children: [
-                Text('NULL-SHARD · declara su tipo', style: NH.mono(size: 11, color: NH.nl, spacing: 1.4)),
-                const SizedBox(height: 14),
-                Row(mainAxisSize: MainAxisSize.min, children: [
-                  for (final t in [CType.firewall, CType.exploit, CType.signal])
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 5),
-                      child: GestureDetector(
-                        onTap: () => c.declareNull(t),
-                        child: Container(
-                          width: 80, padding: const EdgeInsets.symmetric(vertical: 12),
-                          decoration: BoxDecoration(borderRadius: BorderRadius.circular(9), color: NH.mix(Color(t.color), NH.bg, .08), border: Border.all(color: NH.mix(Color(t.color), Colors.transparent, .5))),
-                          child: Column(children: [
-                            Sigil(type: t, size: 34),
-                            const SizedBox(height: 6),
-                            Text(t.label, textAlign: TextAlign.center, style: NH.mono(size: 8, color: NH.ink2, spacing: .8)),
-                          ]),
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque, // bloquea el tablero detrás
+          onTap: () {},
+          child: Container(
+            color: NH.a(const Color(0xFF020408), .9),
+            child: Center(
+              child: Container(
+                padding: const EdgeInsets.all(18),
+                decoration: BoxDecoration(color: const Color(0xFF0A0712), borderRadius: BorderRadius.circular(12), border: Border.all(color: NH.nl), boxShadow: [BoxShadow(color: NH.a(NH.nl, .35), blurRadius: 40)]),
+                child: Column(mainAxisSize: MainAxisSize.min, children: [
+                  Text('NULL-SHARD', style: NH.disp(size: 18, weight: FontWeight.w700, color: NH.nl, spacing: 1)),
+                  const SizedBox(height: 3),
+                  Text('Declara su tipo para compilar (obligatorio)', style: NH.mono(size: 9, color: NH.dim, spacing: .6)),
+                  const SizedBox(height: 14),
+                  Row(mainAxisSize: MainAxisSize.min, children: [
+                    for (final t in [CType.firewall, CType.exploit, CType.signal])
+                      Padding(
+                        padding: const EdgeInsets.symmetric(horizontal: 5),
+                        child: GestureDetector(
+                          onTap: () => c.declareNull(t),
+                          child: Container(
+                            width: 82, padding: const EdgeInsets.symmetric(vertical: 12),
+                            decoration: BoxDecoration(borderRadius: BorderRadius.circular(9), color: NH.mix(Color(t.color), NH.bg, .10), border: Border.all(color: Color(t.color), width: 1.4), boxShadow: [BoxShadow(color: NH.a(Color(t.color), .25), blurRadius: 12)]),
+                            child: Column(children: [
+                              Sigil(type: t, size: 34),
+                              const SizedBox(height: 6),
+                              Text(t.label, textAlign: TextAlign.center, style: NH.mono(size: 8, weight: FontWeight.w700, color: Color(t.color), spacing: .8)),
+                            ]),
+                          ),
                         ),
                       ),
-                    ),
+                  ]),
                 ]),
-              ]),
+              ),
+            ),
+          ),
+        ),
+      );
+
+  // Confirmación de rendición (evita salir por accidente con el botón "atrás").
+  Widget _confirmExitOverlay() => Positioned.fill(
+        child: GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _confirmExit = false), // tocar fuera = continuar
+          child: Container(
+            color: NH.a(const Color(0xFF020408), .86),
+            child: Center(
+              child: GestureDetector(
+                onTap: () {}, // no cerrar al tocar el panel
+                child: Container(
+                  margin: const EdgeInsets.symmetric(horizontal: 30),
+                  padding: const EdgeInsets.fromLTRB(22, 22, 22, 18),
+                  decoration: BoxDecoration(color: const Color(0xFF0B0F17), borderRadius: BorderRadius.circular(14), border: Border.all(color: NH.xp), boxShadow: [BoxShadow(color: NH.a(NH.xp, .3), blurRadius: 34)]),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Text('¿RENDIRSE?', style: NH.disp(size: 24, weight: FontWeight.w700, color: const Color(0xFFEAF1FB), spacing: 1)),
+                    const SizedBox(height: 8),
+                    Text('Si sales ahora, pierdes esta partida y el rival gana.',
+                        textAlign: TextAlign.center, style: NH.mono(size: 10, color: NH.ink2, height: 1.5)),
+                    const SizedBox(height: 18),
+                    Row(children: [
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: () => setState(() => _confirmExit = false),
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: NH.fw), gradient: LinearGradient(colors: [NH.a(NH.fw, .16), NH.a(NH.fw, .04)], begin: Alignment.topCenter, end: Alignment.bottomCenter)),
+                            child: Center(child: Text('CONTINUAR', style: NH.mono(size: 11, weight: FontWeight.w700, color: const Color(0xFFEAF7FF), spacing: 1.2))),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: GestureDetector(
+                          onTap: widget.onExit,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(vertical: 13),
+                            decoration: BoxDecoration(borderRadius: BorderRadius.circular(8), border: Border.all(color: NH.a(NH.xp, .7))),
+                            child: Center(child: Text('RENDIRSE', style: NH.mono(size: 11, weight: FontWeight.w700, color: NH.xp, spacing: 1.2))),
+                          ),
+                        ),
+                      ),
+                    ]),
+                  ]),
+                ),
+              ),
             ),
           ),
         ),

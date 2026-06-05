@@ -18,7 +18,7 @@ import 'match_view.dart';
 
 class MatchController extends ChangeNotifier implements MatchView {
   final MatchEngine engine;
-  final void Function(String outcome, int round) onFlush;
+  final void Function(MatchSummary) onFlush;
 
   @override
   int phaseIdx = 1; // arranca en PROGRAMACIÓN
@@ -168,7 +168,12 @@ class MatchController extends ChangeNotifier implements MatchView {
         });
       }
       if (engine.gameOver) {
-        _after(900, () => onFlush(engine.outcome!, engine.round));
+        // Pausa amplia para que se vea el último golpe y QUIÉN ganó la ronda/partida.
+        _after(2600, () => onFlush(MatchSummary(
+              outcome: engine.outcome!,
+              round: engine.round,
+              history: List.of(history),
+            )));
       }
     });
   }
