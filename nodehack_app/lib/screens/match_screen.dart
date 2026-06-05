@@ -380,7 +380,9 @@ class _MatchScreenState extends State<MatchScreen> {
     final e = c;
     return SizedBox(
       height: 30,
-      child: Stack(children: [
+      // La insignia "+N" flota hacia arriba; Clip.none evita que se recorte y el
+      // anclaje solo-abajo le da altura libre (sin overflow de 2px).
+      child: Stack(clipBehavior: Clip.none, children: [
         Center(
           child: Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             _deckStack('RUTINAS', e.rutPileYou, NH.fw),
@@ -389,7 +391,7 @@ class _MatchScreenState extends State<MatchScreen> {
           ]),
         ),
         if (c.showAcquire && e.acquiredN > 0)
-          Positioned(right: 4, top: 0, bottom: 0, child: Center(child: _acquireBadge(e.acquiredN, e.acquiredRut, e.acquiredSub))),
+          Positioned(right: 4, bottom: 0, child: _acquireBadge(e.acquiredN, e.acquiredRut, e.acquiredSub)),
       ]),
     );
   }

@@ -7,6 +7,12 @@ build/
 *.exe
 *.log
 
+# SECRETOS de firma — NUNCA subir (llave de subida de Google Play).
+*.jks
+*.keystore
+key.properties
+upload-keystore.jks
+
 # Flutter / Android / iOS locales
 nodehack_app/.flutter-plugins
 nodehack_app/.flutter-plugins-dependencies

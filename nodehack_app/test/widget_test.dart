@@ -91,7 +91,8 @@ void main() {
       expect(t.takeException(), isNull);
       if (!ctrl.engine.gameOver) {
         ctrl.nextRound();
-        await t.pump();
+        await t.pump(const Duration(milliseconds: 120)); // muestra la insignia "ADQUIRIDAS +N"
+        expect(t.takeException(), isNull); // sin overflow en la barra de mazos
       }
     }
     await t.pump(const Duration(milliseconds: 2800)); // dispara onFlush (+2600ms)

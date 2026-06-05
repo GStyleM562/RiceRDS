@@ -18,27 +18,14 @@ porque dependen de tu cuenta y tus llaves).
 2. **Política de privacidad:** necesita una **URL pública**. Opciones fáciles y gratis:
    GitHub Pages, o pegar el texto de `PRIVACY.md` en una página/Notion público. Pásame la URL.
 
-## Paso 1 — Crear la llave de subida (una sola vez)
-Genera un keystore. **Guarda el archivo y las contraseñas en un lugar seguro**
-(si los pierdes, no podrás actualizar la app salvo reseteo de Play App Signing).
+## Paso 1 — Llave de subida — ✅ YA GENERADA
+- Archivo: `nodehack_app/android/upload-keystore.jks` (alias `upload`).
+- Config de firma: `nodehack_app/android/key.properties` (NO se versiona).
+- **Respalda el `.jks` y su contraseña** en lugar seguro (gestor de contraseñas).
+  Con Play App Signing, si se pierde se puede resetear, pero mejor guardarla.
 
-```powershell
-# Desde nodehack_app/  — crea la llave (válida 27+ años). Te pedirá contraseñas y datos.
-keytool -genkey -v -keystore upload-keystore.jks -storetype JKS `
-  -keyalg RSA -keysize 2048 -validity 10000 -alias upload
-```
-
-Luego crea `nodehack_app/android/key.properties` (NO se versiona) con:
-
-```properties
-storePassword=TU_CONTRASEÑA_DEL_STORE
-keyPassword=TU_CONTRASEÑA_DE_LA_LLAVE
-keyAlias=upload
-storeFile=../upload-keystore.jks
-```
-
-> `storeFile` es relativo a `android/`. Si dejas el `.jks` en la raíz de
-> `nodehack_app/`, la ruta es `../upload-keystore.jks` (como arriba).
+> Para regenerarla en el futuro: `keytool -genkeypair -v -keystore android/upload-keystore.jks
+> -storetype JKS -keyalg RSA -keysize 2048 -validity 10000 -alias upload`.
 
 ## Paso 2 — Construir el App Bundle (AAB) firmado
 Google Play recibe **.aab**, no .apk.
