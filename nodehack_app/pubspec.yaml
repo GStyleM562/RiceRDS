@@ -44,6 +44,8 @@ dependencies:
     path: ../packages/nodehack_engine
   # Cliente WebSocket para PVP (salas con código).
   web_socket_channel: ^3.0.0
+  # Audio: música de menú/combate y SFX.
+  audioplayers: ^6.1.0
 
 dev_dependencies:
   flutter_test:
@@ -66,6 +68,10 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Audio (música + SFX). Suelta los .mp3 en assets/audio/ (ver su README).
+  assets:
+    - assets/audio/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 import 'package:nodehack_engine/card_instance.dart';
 import 'package:nodehack_engine/resolve.dart';
 import 'package:nodehack_engine/types.dart';
+import '../audio/audio_service.dart';
 import '../state/match_view.dart';
 import '../theme/tokens.dart';
 import '../widgets/anims.dart';
@@ -39,6 +40,18 @@ class _MatchScreenState extends State<MatchScreen> {
 
   MatchView get c => widget.ctrl;
   RenderBox? get _rootBox => _rootKey.currentContext?.findRenderObject() as RenderBox?;
+
+  @override
+  void initState() {
+    super.initState();
+    AudioService.instance.playMusic(Music.combat); // música de combate
+  }
+
+  @override
+  void dispose() {
+    AudioService.instance.playMusic(Music.menu); // al salir, vuelve la del menú
+    super.dispose();
+  }
 
   List<String> _validTargets(CardInstance card) {
     if (!card.isSub) return ['active'];
@@ -95,6 +108,7 @@ class _MatchScreenState extends State<MatchScreen> {
       } else if (target == 'sub1') {
         c.placeSub(d.card, 1);
       }
+      if (target != null) AudioService.instance.playSfx(Sfx.cardPlace);
     } else {
       widget.onInspect(d.card); // toque (sin arrastrar) = ver carta en zoom
     }
@@ -106,6 +120,11 @@ class _MatchScreenState extends State<MatchScreen> {
   }
 
   void _requestExit() => setState(() => _confirmExit = true);
+
+  void _compile() {
+    AudioService.instance.playSfx(Sfx.compile);
+    c.compile();
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -309,7 +328,7 @@ class _MatchScreenState extends State<MatchScreen> {
             textAlign: TextAlign.center, style: NH.mono(size: 9.5, weight: FontWeight.w700, color: const Color(0xFFFF6B86))),
         if (r.log.isNotEmpty) ...[
           const SizedBox(height: 5),
-          for (final l in r.log.take(4))
+          for (final l in r.log.take(6))
             Text('· $l', textAlign: TextAlign.center, style: NH.mono(size: 8.5, color: NH.ink2, height: 1.35)),
         ],
         const SizedBox(height: 5),
@@ -547,7 +566,9 @@ class _MatchScreenState extends State<MatchScreen> {
           ? 'DECLARA EL TIPO DEL NULL-SHARD'
           : (e.active != null ? 'COMPILAR ▸' : 'ARRASTRA UNA RUTINA AL PUESTO ACTIVO');
       final enabled = e.canCompile;
-      return Padding(padding: const EdgeInsets.only(top: 2), child: _wideBtn(label, enabled: enabled, onTap: enabled ? c.compile : null));
+      return Padding(
+          padding: const EdgeInsets.only(top: 2),
+          child: _wideBtn(label, enabled: enabled, onTap: enabled ? _compile : null));
     } else if (p == 'compilar' || p == 'revelacion' || p == 'ejecucion') {
       final t = p == 'compilar' ? 'SELLANDO PROCESO…' : (p == 'revelacion' ? 'REVELANDO…' : 'EJECUTANDO…');
       return Padding(padding: const EdgeInsets.only(top: 2), child: _wideBtn(t, loading: true));

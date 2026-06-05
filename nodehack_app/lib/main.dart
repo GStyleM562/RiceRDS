@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nodehack_engine/card_instance.dart';
 import 'package:nodehack_engine/deck.dart';
+import 'audio/audio_service.dart';
 import 'state/app_state.dart';
 import 'state/match_controller.dart';
 import 'state/match_view.dart';
@@ -15,8 +16,9 @@ import 'screens/online_screen.dart';
 import 'theme/tokens.dart';
 import 'widgets/card_view.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await AudioService.instance.init();
   runApp(const NodehackApp());
 }
 
@@ -51,6 +53,7 @@ class _AppRootState extends State<AppRoot> {
   void initState() {
     super.initState();
     app.load();
+    AudioService.instance.playMusic(Music.menu);
   }
 
   void _go(_Screen s) => setState(() => screen = s);
