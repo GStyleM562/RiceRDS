@@ -8,6 +8,7 @@ import 'card_instance.dart';
 import 'cards.dart';
 import 'cpu.dart';
 import 'deck.dart';
+import 'pile_set.dart';
 import 'resolve.dart';
 import 'types.dart';
 
@@ -25,11 +26,9 @@ class MatchEngine {
   int integrityYou;
   int integrityOpp;
 
-  // Pilas de robo (se agotan; se rebarajan desde el mazo si se vacían).
-  final List<CardInstance> _rutYou = [];
-  final List<CardInstance> _subYou = [];
-  final List<CardInstance> _rutOpp = [];
-  final List<CardInstance> _subOpp = [];
+  // Mazo de robo de cada jugador (robo + descarte que se rebaraja reciclando).
+  late final PileSet _pilesYou;
+  late final PileSet _pilesOpp;
 
   final List<CardInstance> handYou = [];
   final List<CardInstance> _handOpp = []; // OCULTA — nunca se expone a la UI
@@ -61,70 +60,57 @@ class MatchEngine {
   })  : integrityYou = nucYou.integrity,
         integrityOpp = nucOpp.integrity,
         rng = rng ?? Random() {
-    _refillRut(_rutYou, deckYou);
-    _refillSub(_subYou, deckYou);
-    _refillRut(_rutOpp, deckOpp);
-    _refillSub(_subOpp, deckOpp);
+    _pilesYou = PileSet(deckYou, this.rng);
+    _pilesOpp = PileSet(deckOpp, this.rng);
     // Mano inicial: 2 Rutinas + 3 Subrutinas.
-    _acquire(handYou, _rutYou, _subYou, deckYou, 2, 3, isYou: true);
-    _acquire(_handOpp, _rutOpp, _subOpp, deckOpp, 2, 3, isYou: false);
+    _acquire(handYou, _pilesYou, 2, 3, isYou: true);
+    _acquire(_handOpp, _pilesOpp, 2, 3, isYou: false);
   }
 
-  // ---- Conteos de pila (para la UI) ----
-  int get rutPileYou => _rutYou.length;
-  int get subPileYou => _subYou.length;
-  int get rutPileOpp => _rutOpp.length;
-  int get subPileOpp => _subOpp.length;
+  // ---- Conteos de pila de robo (para la UI) ----
+  int get rutPileYou => _pilesYou.rutLeft;
+  int get subPileYou => _pilesYou.subLeft;
+  int get rutPileOpp => _pilesOpp.rutLeft;
+  int get subPileOpp => _pilesOpp.subLeft;
 
-  void _refillRut(List<CardInstance> pile, Deck d) {
-    pile.addAll(d.buildRutinas());
-    pile.shuffle(rng);
-  }
-
-  void _refillSub(List<CardInstance> pile, Deck d) {
-    pile.addAll(d.buildSubs());
-    pile.shuffle(rng);
-  }
-
-  CardInstance _drawRut(List<CardInstance> pile, Deck d) {
-    if (pile.isEmpty) _refillRut(pile, d);
-    return pile.removeLast();
-  }
-
-  CardInstance _drawSub(List<CardInstance> pile, Deck d) {
-    if (pile.isEmpty) _refillSub(pile, d);
-    return pile.removeLast();
-  }
-
-  /// Roba [nR] Rutinas + [nS] Subrutinas a [hand] desde las pilas. Garantiza ≥1
-  /// Rutina en mano y respeta el tope [kMaxHand] (descarta Subrutinas sobrantes).
-  void _acquire(List<CardInstance> hand, List<CardInstance> rutPile,
-      List<CardInstance> subPile, Deck d, int nR, int nS, {required bool isYou}) {
+  /// Roba [nR] Rutinas + [nS] Subrutinas a [hand] desde [piles]. Garantiza ≥1
+  /// Rutina y ≥1 Subrutina en mano y respeta el tope [kMaxHand] (los sobrantes
+  /// van al descarte para reciclarse, no se pierden ni se duplican).
+  void _acquire(List<CardInstance> hand, PileSet piles, int nR, int nS, {required bool isYou}) {
     var gotR = 0, gotS = 0;
+    void takeRut() {
+      final c = piles.drawRut();
+      if (c != null) {
+        hand.add(c);
+        gotR++;
+      }
+    }
+
+    void takeSub() {
+      final c = piles.drawSub();
+      if (c != null) {
+        hand.add(c);
+        gotS++;
+      }
+    }
+
     for (var i = 0; i < nR; i++) {
-      hand.add(_drawRut(rutPile, d));
-      gotR++;
+      takeRut();
     }
     for (var i = 0; i < nS; i++) {
-      hand.add(_drawSub(subPile, d));
-      gotS++;
+      takeSub();
     }
-    if (!hand.any((c) => !c.isSub)) {
-      hand.add(_drawRut(rutPile, d)); // ≥1 Rutina (para poder jugar)
-      gotR++;
-    }
-    if (!hand.any((c) => c.isSub)) {
-      hand.add(_drawSub(subPile, d)); // ≥1 Subrutina (evita manos de "puras Rutinas")
-      gotS++;
-    }
+    if (!hand.any((c) => !c.isSub)) takeRut(); // ≥1 Rutina (para poder jugar)
+    if (!hand.any((c) => c.isSub)) takeSub(); // ≥1 Subrutina (evita manos de "puras Rutinas")
+
     // Tope balanceado: descarta del tipo MÁS abundante (nunca baja de 1 de cada uno).
     while (hand.length > kMaxHand) {
       final rut = hand.where((c) => !c.isSub).length;
       final sub = hand.length - rut;
       if (rut >= sub && rut > 1) {
-        hand.removeAt(hand.indexWhere((c) => !c.isSub));
+        piles.discard(hand.removeAt(hand.indexWhere((c) => !c.isSub)));
       } else if (sub > 1) {
-        hand.removeAt(hand.lastIndexWhere((c) => c.isSub));
+        piles.discard(hand.removeAt(hand.lastIndexWhere((c) => c.isSub)));
       } else {
         break;
       }
@@ -253,14 +239,14 @@ class MatchEngine {
     if (opp) {
       if (nucOpp.passiveId == PassiveId.blindaje && !_sentinelUsedOpp) {
         _sentinelUsedOpp = true;
-        result?.log.add('BLINDAJE rival anula el daño');
+        result?.log.add('BLINDAJE (rival) → anula el daño');
         return;
       }
       integrityOpp = (integrityOpp - amount).clamp(0, nucOpp.integrity);
     } else {
       if (nucYou.passiveId == PassiveId.blindaje && !_sentinelUsedYou) {
         _sentinelUsedYou = true;
-        result?.log.add('BLINDAJE anula el daño');
+        result?.log.add('BLINDAJE (tú) → anula el daño');
         return;
       }
       integrityYou = (integrityYou - amount).clamp(0, nucYou.integrity);
@@ -270,6 +256,18 @@ class MatchEngine {
   /// Avanza de ronda: descarta la jugada, adquiere cartas hasta llenar la mano.
   void nextRound() {
     if (gameOver) return;
+    // Las cartas jugadas esta ronda van al descarte (se reciclan; no se duplican).
+    if (active != null) _pilesYou.discard(active!);
+    for (final s in subs) {
+      if (s != null) _pilesYou.discard(s);
+    }
+    final op = oppPlay;
+    if (op != null) {
+      _pilesOpp.discard(op.rutina);
+      for (final s in op.subs) {
+        _pilesOpp.discard(s);
+      }
+    }
     round += 1;
     active = null;
     subs[0] = null;
@@ -296,7 +294,7 @@ class MatchEngine {
       _empAgainstOpp = false;
     }
 
-    _acquire(handYou, _rutYou, _subYou, deckYou, 2, subYou.clamp(0, 4), isYou: true);
-    _acquire(_handOpp, _rutOpp, _subOpp, deckOpp, 2, subOpp.clamp(0, 4), isYou: false);
+    _acquire(handYou, _pilesYou, 2, subYou.clamp(0, 4), isYou: true);
+    _acquire(_handOpp, _pilesOpp, 2, subOpp.clamp(0, 4), isYou: false);
   }
 }

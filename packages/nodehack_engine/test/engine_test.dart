@@ -5,6 +5,7 @@ import 'package:nodehack_engine/card_instance.dart';
 import 'package:nodehack_engine/cards.dart';
 import 'package:nodehack_engine/deck.dart';
 import 'package:nodehack_engine/match_engine.dart';
+import 'package:nodehack_engine/pile_set.dart';
 import 'package:nodehack_engine/resolve.dart';
 import 'package:nodehack_engine/types.dart';
 
@@ -94,6 +95,20 @@ void main() {
       expect(r.youCiclos, 9); // ZERO-DAY (avanzada exploit)
       expect(r.winner, Winner.you); // EXPLOIT vence PULSO
     });
+
+    test('el log registra los efectos del RIVAL (no solo los tuyos)', () {
+      // El rival juega OVERCLOCK en un espejo: debe constar en TU log y ganar él.
+      final r = resolve(_p(_rut('fw_base')), _p(_rut('fw_base'), [_sub('overclock')]));
+      expect(r.winner, Winner.opp); // rival 5+4=9 vs tus 5
+      expect(r.log.any((l) => l.contains('OVERCLOCK') && l.contains('rival')), isTrue);
+    });
+
+    test('INTRUSIÓN del RIVAL desplaza TU Rutina y queda en el log', () {
+      // El rival te aplica INTRUSIÓN: tu CORTAFUEGOS → exploit (firewall.next).
+      final r = resolve(_p(_rut('fw_base')), _p(_rut('xp_base'), [_sub('shift_fwd')]));
+      expect(r.youType, CType.exploit);
+      expect(r.log.any((l) => l.contains('INTRUSIÓN') && l.contains('rival')), isTrue);
+    });
   });
 
   group('mazo', () {
@@ -179,6 +194,63 @@ void main() {
       expect(m.result!.winner, Winner.opp);
       m.applyResult();
       expect(m.integrityYou, m.nucYou.integrity); // sin pérdida (BLINDAJE)
+    });
+  });
+
+  group('reciclado de mazo (límite de copias)', () {
+    test('PileSet recicla: jamás produce más copias que las del mazo', () {
+      final deck = Deck(name: 'X', nucleoId: 'sentinel', rut: {'pl_base': 3, 'fw_base': 7}, sub: {'overclock': 20});
+      final piles = PileSet(deck, Random(1));
+      final seen = <String, Set<String>>{};
+      // Roba MUCHÍSIMAS más rutinas que las del mazo, descartando cada una.
+      for (var i = 0; i < 200; i++) {
+        final c = piles.drawRut();
+        expect(c, isNotNull);
+        (seen[c!.defId] ??= <String>{}).add(c.uid);
+        piles.discard(c);
+      }
+      expect(seen['pl_base']!.length, 3); // solo 3 instancias de PULSO, siempre
+      expect(seen['fw_base']!.length, 7);
+    });
+
+    test('en partida completa nunca aparecen más copias de una carta que las del mazo', () {
+      final deck = Deck(
+        name: 'COPIAS',
+        nucleoId: 'sentinel',
+        rut: {'pl_base': 3, 'fw_base': 3, 'xp_base': 3, 'pl_emp': 1},
+        sub: {'overclock': 5, 'throttle': 5, 'cuarentena': 5, 'mirror': 5},
+      );
+      expect(deck.isLegal, isTrue);
+      for (var seed = 0; seed < 25; seed++) {
+        final m = MatchEngine(
+          nucYou: kNucById['sentinel']!,
+          nucOpp: kNucById['wraith']!,
+          deckYou: deck,
+          deckOpp: Deck.starter(),
+          rng: Random(seed),
+        );
+        final seen = <String, Set<String>>{};
+        var guard = 0;
+        while (!m.gameOver && guard++ < 300) {
+          for (final c in m.handYou) {
+            (seen[c.defId] ??= <String>{}).add(c.uid);
+          }
+          final r = m.handYou.firstWhere((c) => !c.isSub);
+          if (r.esComodinNull) r.declaredType = CType.firewall;
+          m.placeActive(r);
+          m.compile();
+          m.applyResult();
+          if (!m.gameOver) m.nextRound();
+        }
+        deck.rut.forEach((id, count) {
+          expect((seen[id] ?? const {}).length, lessThanOrEqualTo(count),
+              reason: 'semilla $seed: rutina $id superó $count copias');
+        });
+        deck.sub.forEach((id, count) {
+          expect((seen[id] ?? const {}).length, lessThanOrEqualTo(count),
+              reason: 'semilla $seed: sub $id superó $count copias');
+        });
+      }
     });
   });
 }

@@ -112,89 +112,101 @@ RoundResult resolve(Play you, Play opp) {
   var oC = opp.rutina.ciclos;
   var annulYou = false, annulOpp = false, forceDraw = false;
 
-  // SIGKILL
+  // El log registra CADA efecto por AMBOS lados — "(tú)" lo jugaste tú, "(rival)"
+  // lo jugó el rival — para que se entienda cómo quedó la jugada de los dos.
+
+  // SIGKILL — anula TODAS las subrutinas del otro.
   if (_has(you, 'sigkill')) {
     annulOpp = true;
-    log.add('SIGKILL → subrutinas rivales anuladas');
+    log.add('SIGKILL (tú) → anulas las subrutinas del rival');
   }
   if (_has(opp, 'sigkill')) {
     annulYou = true;
-    log.add('SIGKILL rival → tus subrutinas anuladas');
+    log.add('SIGKILL (rival) → anula tus subrutinas');
   }
 
-  // MIRROR (copia el tipo rival)
+  // MIRROR — copia el tipo de la Rutina del otro.
   if (_has(you, 'mirror') && !annulYou) {
     yT = oT;
-    log.add('MIRROR → copias el tipo rival');
+    log.add('MIRROR (tú) → copias el tipo del rival');
   }
   if (_has(opp, 'mirror') && !annulOpp) {
     oT = yT;
+    log.add('MIRROR (rival) → copia tu tipo');
   }
 
-  // DESVÍO DE FASE: INTRUSIÓN ▸ (rival al siguiente) · ◂ RECALIBRAR (tú al anterior).
-  // Mantiene el nivel (básica/avanzada): los Ciclos se ajustan al tipo nuevo.
+  // DESVÍO DE FASE — mantiene el nivel (básica/avanzada): recalcula Ciclos al tipo nuevo.
+  // INTRUSIÓN ▸ (shift_fwd): mueve la Rutina del RIVAL al tipo SIGUIENTE.
   if (_has(you, 'shift_fwd') && !annulYou) {
     oT = oT.next;
     oC = _tierCiclos(opp.rutina, oT);
-    log.add('INTRUSIÓN → Rutina rival desplazada a ${oT.label}');
+    log.add('INTRUSIÓN (tú) → mueves la Rutina del rival a ${oT.label}');
   }
   if (_has(opp, 'shift_fwd') && !annulOpp) {
     yT = yT.next;
     yC = _tierCiclos(you.rutina, yT);
-    log.add('INTRUSIÓN rival → tu Rutina desplazada a ${yT.label}');
+    log.add('INTRUSIÓN (rival) → mueve tu Rutina a ${yT.label}');
   }
+  // ◂ RECALIBRAR (shift_back): mueve TU PROPIA Rutina al tipo ANTERIOR.
   if (_has(you, 'shift_back') && !annulYou) {
     yT = yT.prev;
     yC = _tierCiclos(you.rutina, yT);
-    log.add('RECALIBRAR → tu Rutina a ${yT.label}');
+    log.add('RECALIBRAR (tú) → mueves tu Rutina a ${yT.label}');
   }
   if (_has(opp, 'shift_back') && !annulOpp) {
     oT = oT.prev;
     oC = _tierCiclos(opp.rutina, oT);
+    log.add('RECALIBRAR (rival) → mueve su Rutina a ${oT.label}');
   }
-  // SABOTAJE ◂ (rival al anterior)
+  // ◂ SABOTAJE (shift_opp_back): mueve la Rutina del RIVAL al tipo ANTERIOR.
   if (_has(you, 'shift_opp_back') && !annulYou) {
     oT = oT.prev;
     oC = _tierCiclos(opp.rutina, oT);
-    log.add('SABOTAJE → Rutina rival a ${oT.label}');
+    log.add('SABOTAJE (tú) → mueves la Rutina del rival a ${oT.label}');
   }
   if (_has(opp, 'shift_opp_back') && !annulOpp) {
     yT = yT.prev;
     yC = _tierCiclos(you.rutina, yT);
-    log.add('SABOTAJE rival → tu Rutina a ${yT.label}');
+    log.add('SABOTAJE (rival) → mueve tu Rutina a ${yT.label}');
   }
-  // AVANCE ▸ (tú al siguiente)
+  // AVANCE ▸ (shift_you_fwd): mueve TU PROPIA Rutina al tipo SIGUIENTE.
   if (_has(you, 'shift_you_fwd') && !annulYou) {
     yT = yT.next;
     yC = _tierCiclos(you.rutina, yT);
-    log.add('AVANCE → tu Rutina a ${yT.label}');
+    log.add('AVANCE (tú) → mueves tu Rutina a ${yT.label}');
   }
   if (_has(opp, 'shift_you_fwd') && !annulOpp) {
     oT = oT.next;
     oC = _tierCiclos(opp.rutina, oT);
+    log.add('AVANCE (rival) → mueve su Rutina a ${oT.label}');
   }
 
-  // OVERCLOCK / THROTTLE (no afectan a NULL)
+  // OVERCLOCK / THROTTLE (no afectan a NULL).
   if (_has(you, 'overclock') && !annulYou && you.rutina.type != CType.nul) {
     yC += 4;
-    log.add('OVERCLOCK → +4 Ciclos');
+    log.add('OVERCLOCK (tú) → +4 a tus Ciclos');
   }
   if (_has(opp, 'overclock') && !annulOpp && opp.rutina.type != CType.nul) {
     oC += 4;
+    log.add('OVERCLOCK (rival) → +4 a los Ciclos del rival');
   }
   if (_has(you, 'throttle') && !annulYou && opp.rutina.type != CType.nul) {
     oC -= 4;
-    log.add('THROTTLE → −4 Ciclos al rival');
+    log.add('THROTTLE (tú) → −4 a los Ciclos del rival');
   }
   if (_has(opp, 'throttle') && !annulOpp && you.rutina.type != CType.nul) {
     yC -= 4;
+    log.add('THROTTLE (rival) → −4 a tus Ciclos');
   }
 
-  // CUARENTENA fuerza empate
-  if ((_has(you, 'cuarentena') && !annulYou) ||
-      (_has(opp, 'cuarentena') && !annulOpp)) {
+  // CUARENTENA fuerza empate.
+  if (_has(you, 'cuarentena') && !annulYou) {
     forceDraw = true;
-    log.add('CUARENTENA → ronda forzada a EMPATE');
+    log.add('CUARENTENA (tú) → fuerzas el EMPATE');
+  }
+  if (_has(opp, 'cuarentena') && !annulOpp) {
+    forceDraw = true;
+    log.add('CUARENTENA (rival) → fuerza el EMPATE');
   }
 
   Winner winner;
@@ -208,25 +220,31 @@ RoundResult resolve(Play you, Play opp) {
     } else {
       winner = Winner.draw;
     }
-    log.add('Espejo ${yT.label} → decide Ciclos ($yC vs $oC)');
+    log.add('Espejo ${yT.label} → deciden los Ciclos (tú $yC vs $oC rival)');
   } else if (yT == CType.nul) {
     winner = Winner.you;
-    log.add('NULL toma ventaja');
+    log.add('NULL (tú) toma ventaja');
   } else if (oT == CType.nul) {
     winner = Winner.opp;
+    log.add('NULL (rival) toma ventaja');
   } else if (yT.venceA(oT)) {
     winner = Winner.you;
-    log.add('${yT.label} vence a ${oT.label}');
+    log.add('Tu ${yT.label} vence al ${oT.label} del rival');
   } else {
     winner = Winner.opp;
-    log.add('${oT.label} vence a ${yT.label}');
+    log.add('El ${oT.label} del rival vence a tu ${yT.label}');
   }
 
   // Daño: 1 base; FORK-BOMB del ganador (no anulada) suma +1.
   var damage = winner == Winner.draw ? 0 : 1;
-  if (winner == Winner.you && _has(you, 'forkbomb') && !annulYou) damage += 1;
-  if (winner == Winner.opp && _has(opp, 'forkbomb') && !annulOpp) damage += 1;
-  if (damage == 2) log.add('FORK-BOMB → +1 daño');
+  if (winner == Winner.you && _has(you, 'forkbomb') && !annulYou) {
+    damage += 1;
+    log.add('FORK-BOMB (tú) → +1 daño al rival');
+  }
+  if (winner == Winner.opp && _has(opp, 'forkbomb') && !annulOpp) {
+    damage += 1;
+    log.add('FORK-BOMB (rival) → +1 daño a ti');
+  }
 
   return RoundResult(
     winner: winner,

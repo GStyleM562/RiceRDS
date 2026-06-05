@@ -17,10 +17,9 @@ import 'package:nodehack_engine/nodehack_engine.dart';
 class PlayerState {
   final NucleoDef nuc;
   final Deck deck;
+  final PileSet piles; // robo + descarte que se rebaraja reciclando (no duplica)
   int integrity;
 
-  final List<CardInstance> rutPile = [];
-  final List<CardInstance> subPile = [];
   final List<CardInstance> hand = [];
 
   // Jugada programada de la ronda actual.
@@ -37,12 +36,12 @@ class PlayerState {
   int ramPen = 0; // ZERO-DAY → −1 RAM próxima ronda
   bool empAgainst = false; // EMP-BURST rival → −1 sub próxima ronda
 
-  PlayerState(this.nuc, this.deck) : integrity = nuc.integrity;
+  PlayerState(this.nuc, this.deck, this.piles) : integrity = nuc.integrity;
 }
 
 class OnlineMatch {
   final Random rng;
-  final List<PlayerState> p; // longitud 2
+  late final List<PlayerState> p; // longitud 2
 
   int round = 1;
   bool gameOver = false;
@@ -57,65 +56,53 @@ class OnlineMatch {
     required NucleoDef nuc1,
     required Deck deck1,
     Random? rng,
-  })  : rng = rng ?? Random(),
-        p = [PlayerState(nuc0, deck0), PlayerState(nuc1, deck1)] {
-    for (final s in p) {
-      _refillRut(s);
-      _refillSub(s);
-    }
+  })  : rng = rng ?? Random() {
+    p = [
+      PlayerState(nuc0, deck0, PileSet(deck0, this.rng)),
+      PlayerState(nuc1, deck1, PileSet(deck1, this.rng)),
+    ];
     _acquire(0, 2, 3);
     _acquire(1, 2, 3);
   }
 
-  // ---------------- Pilas / robo (reusa Deck del motor) ----------------
-  void _refillRut(PlayerState s) {
-    s.rutPile.addAll(s.deck.buildRutinas());
-    s.rutPile.shuffle(rng);
-  }
-
-  void _refillSub(PlayerState s) {
-    s.subPile.addAll(s.deck.buildSubs());
-    s.subPile.shuffle(rng);
-  }
-
-  CardInstance _drawRut(PlayerState s) {
-    if (s.rutPile.isEmpty) _refillRut(s);
-    return s.rutPile.removeLast();
-  }
-
-  CardInstance _drawSub(PlayerState s) {
-    if (s.subPile.isEmpty) _refillSub(s);
-    return s.subPile.removeLast();
-  }
-
   /// Roba [nR] Rutinas + [nS] Subrutinas a la mano de `p[i]`, garantiza ≥1 Rutina
-  /// y ≥1 Subrutina, y respeta el tope [kMaxHand] (descarta del tipo más abundante).
+  /// y ≥1 Subrutina, y respeta el tope [kMaxHand] (los sobrantes van al descarte
+  /// del propio mazo: se reciclan, no se duplican ni se pierden).
   void _acquire(int i, int nR, int nS) {
     final s = p[i];
     var gotR = 0, gotS = 0;
+    void takeRut() {
+      final c = s.piles.drawRut();
+      if (c != null) {
+        s.hand.add(c);
+        gotR++;
+      }
+    }
+
+    void takeSub() {
+      final c = s.piles.drawSub();
+      if (c != null) {
+        s.hand.add(c);
+        gotS++;
+      }
+    }
+
     for (var k = 0; k < nR; k++) {
-      s.hand.add(_drawRut(s));
-      gotR++;
+      takeRut();
     }
     for (var k = 0; k < nS; k++) {
-      s.hand.add(_drawSub(s));
-      gotS++;
+      takeSub();
     }
-    if (!s.hand.any((c) => !c.isSub)) {
-      s.hand.add(_drawRut(s));
-      gotR++;
-    }
-    if (!s.hand.any((c) => c.isSub)) {
-      s.hand.add(_drawSub(s));
-      gotS++;
-    }
+    if (!s.hand.any((c) => !c.isSub)) takeRut();
+    if (!s.hand.any((c) => c.isSub)) takeSub();
+
     while (s.hand.length > kMaxHand) {
       final rut = s.hand.where((c) => !c.isSub).length;
       final sub = s.hand.length - rut;
       if (rut >= sub && rut > 1) {
-        s.hand.removeAt(s.hand.indexWhere((c) => !c.isSub));
+        s.piles.discard(s.hand.removeAt(s.hand.indexWhere((c) => !c.isSub)));
       } else if (sub > 1) {
-        s.hand.removeAt(s.hand.lastIndexWhere((c) => c.isSub));
+        s.piles.discard(s.hand.removeAt(s.hand.lastIndexWhere((c) => c.isSub)));
       } else {
         break;
       }
@@ -245,8 +232,8 @@ class OnlineMatch {
     if (s.nuc.passiveId == PassiveId.blindaje && !s.sentinelUsed) {
       s.sentinelUsed = true;
       // Nota en ambos registros, con la redacción de cada perspectiva.
-      _results?[i].log.add('BLINDAJE anula el daño');
-      _results?[1 - i].log.add('BLINDAJE rival anula el daño');
+      _results?[i].log.add('BLINDAJE (tú) → anula el daño');
+      _results?[1 - i].log.add('BLINDAJE (rival) → anula el daño');
       return;
     }
     s.integrity = (s.integrity - amount).clamp(0, s.nuc.integrity);
@@ -259,6 +246,11 @@ class OnlineMatch {
     if (gameOver) return;
     round += 1;
     for (final s in p) {
+      // Lo jugado esta ronda vuelve al descarte del propio mazo (se recicla).
+      if (s.active != null) s.piles.discard(s.active!);
+      for (final c in s.playSubs) {
+        s.piles.discard(c);
+      }
       s.active = null;
       s.playSubs.clear();
       s.submitted = false;
@@ -297,10 +289,10 @@ class OnlineMatch {
       integrityMaxOpp: op.nuc.integrity,
       nucYouId: me.nuc.id,
       nucOppId: op.nuc.id,
-      rutPileYou: me.rutPile.length,
-      subPileYou: me.subPile.length,
-      rutPileOpp: op.rutPile.length,
-      subPileOpp: op.subPile.length,
+      rutPileYou: me.piles.rutLeft,
+      subPileYou: me.piles.subLeft,
+      rutPileOpp: op.piles.rutLeft,
+      subPileOpp: op.piles.subLeft,
       gameOver: gameOver,
       outcome: gameOver ? (winner == i ? 'win' : 'lose') : null,
     );

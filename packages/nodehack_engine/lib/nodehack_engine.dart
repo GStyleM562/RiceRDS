@@ -6,6 +6,7 @@ export 'cards.dart';
 export 'cpu.dart';
 export 'deck.dart';
 export 'dto.dart';
+export 'pile_set.dart';
 export 'protocol_keys.dart';
 export 'match_engine.dart';
 export 'resolve.dart';

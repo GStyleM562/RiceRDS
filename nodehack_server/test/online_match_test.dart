@@ -157,5 +157,41 @@ void main() {
       }
       expect(m.gameOver, isTrue);
     });
+
+    test('el mazo se RECICLA: nunca aparecen más copias de una carta que las del mazo', () {
+      final deck = Deck(
+        name: 'COPIAS',
+        nucleoId: 'sentinel',
+        rut: {'pl_base': 3, 'fw_base': 3, 'xp_base': 3, 'pl_emp': 1},
+        sub: {'overclock': 5, 'throttle': 5, 'cuarentena': 5, 'mirror': 5},
+      );
+      expect(deck.isLegal, isTrue);
+      for (var seed = 0; seed < 20; seed++) {
+        final m = OnlineMatch(
+          nuc0: kNucById['sentinel']!, deck0: deck,
+          nuc1: kNucById['wraith']!, deck1: Deck.starter(),
+          rng: Random(seed),
+        );
+        final seen = <String, Set<String>>{};
+        var guard = 0;
+        while (!m.gameOver && guard++ < 300) {
+          for (final c in m.handOf(0)) {
+            (seen[c.defId] ??= <String>{}).add(c.uid);
+          }
+          m.submitPlay(0, m.defaultSubmissionFor(0));
+          m.submitPlay(1, m.defaultSubmissionFor(1));
+          m.resolveRound();
+          if (!m.gameOver) m.advanceRound();
+        }
+        deck.rut.forEach((id, count) {
+          expect((seen[id] ?? const {}).length, lessThanOrEqualTo(count),
+              reason: 'semilla $seed: rutina $id superó $count copias');
+        });
+        deck.sub.forEach((id, count) {
+          expect((seen[id] ?? const {}).length, lessThanOrEqualTo(count),
+              reason: 'semilla $seed: sub $id superó $count copias');
+        });
+      }
+    });
   });
 }
