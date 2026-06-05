@@ -1,6 +1,8 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Requerido para el PVP por WebSocket. En RELEASE no se incluye por defecto. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <application
-        android:label="nodehack_app"
+        android:label="Null Protocol"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher">
         <activity
