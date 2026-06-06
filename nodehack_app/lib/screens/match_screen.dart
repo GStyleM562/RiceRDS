@@ -250,9 +250,11 @@ class _MatchScreenState extends State<MatchScreen> {
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 0), 1, NH.xp)),
             const SizedBox(width: 10),
-            _slot(width: 72, height: 100, filled: opp != null, child: opp != null
-                ? (c.revealed ? _execWrap(_oppCard(opp.rutina, 72), 0, NH.xp) : const CardBackView(width: 72, seed: 42))
-                : null),
+            _morphOverlay(
+              _slot(width: 72, height: 100, filled: opp != null, child: opp != null
+                  ? (c.revealed ? _execWrap(_oppCard(opp.rutina, 72), 0, NH.xp) : const CardBackView(width: 72, seed: 42))
+                  : null),
+              c.result?.oppType, opp?.rutina.type),
             const SizedBox(width: 10),
             _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 1), 2, NH.xp)),
           ]),
@@ -286,12 +288,68 @@ class _MatchScreenState extends State<MatchScreen> {
         if (!showResult) ...[
           const SizedBox(height: 3),
           Text(c.phase.hint, textAlign: TextAlign.center, style: NH.mono(size: 8.5, color: NH.dim)),
+          const SizedBox(height: 6),
+          _cycleLegend(),
         ],
         if (showResult) _resultBanner(r),
         if (showResult) _explanation(r),
       ]),
     );
   }
+
+  // Ciclo de fuerza: CORTAFUEGOS ▸ EXPLOIT ▸ PULSO ▸ (vuelve). El ▸ = "vence a" y
+  // es la dirección de AVANCE (las subrutinas de retroceso van al revés).
+  Widget _cycleLegend() {
+    Widget chip(CType t) => Row(mainAxisSize: MainAxisSize.min, children: [
+          Sigil(type: t, size: 13),
+          const SizedBox(width: 3),
+          Text(t.short, style: NH.mono(size: 9, weight: FontWeight.w700, color: Color(t.color))),
+        ]);
+    Widget arrow() => Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 5),
+          child: Text('▸', style: NH.mono(size: 11, color: NH.dim)),
+        );
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+        chip(CType.firewall),
+        arrow(),
+        chip(CType.exploit),
+        arrow(),
+        chip(CType.signal),
+        Padding(padding: const EdgeInsets.only(left: 5), child: Text('↻', style: NH.mono(size: 11, color: NH.dim))),
+      ]),
+      const SizedBox(height: 2),
+      Text('▸ vence / AVANCE   ·   ◂ RETROCESO', style: NH.mono(size: 7, color: NH.dim2, spacing: 1)),
+    ]);
+  }
+
+  // Si una Rutina cambió de tipo por shifts/mirror, muestra "origen ▸ tipo final"
+  // sobre la carta activa durante ejecución/resultado.
+  Widget _morphOverlay(Widget card, CType? finalType, CType? orig) {
+    final phaseOk = c.phase.id == 'ejecucion' || c.phase.id == 'resultado';
+    if (!phaseOk || finalType == null || orig == null || finalType == orig) return card;
+    return Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
+      card,
+      Positioned(bottom: 4, left: 0, right: 0, child: Center(child: _morphChip(orig, finalType))),
+    ]);
+  }
+
+  Widget _morphChip(CType from, CType to) => Container(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        decoration: BoxDecoration(
+          color: NH.a(const Color(0xFF06080D), .92),
+          borderRadius: BorderRadius.circular(6),
+          border: Border.all(color: Color(to.color)),
+          boxShadow: [BoxShadow(color: NH.a(Color(to.color), .45), blurRadius: 9)],
+        ),
+        child: Row(mainAxisSize: MainAxisSize.min, children: [
+          Sigil(type: from, size: 10),
+          Text('▸', style: NH.mono(size: 9, color: NH.dim)),
+          Sigil(type: to, size: 12),
+          const SizedBox(width: 2),
+          Text(to.short, style: NH.mono(size: 8, weight: FontWeight.w700, color: Color(to.color))),
+        ]),
+      );
 
   // Log persistente que EXPLICA por qué fue ese resultado.
   Widget _explanation(RoundResult r) {
@@ -376,7 +434,7 @@ class _MatchScreenState extends State<MatchScreen> {
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             _dropSlot('sub0', 52, 73, e.subs[0]),
             const SizedBox(width: 10),
-            _dropSlot('active', 72, 100, e.active, glow: true),
+            _morphOverlay(_dropSlot('active', 72, 100, e.active, glow: true), c.result?.youType, e.active?.type),
             const SizedBox(width: 10),
             _dropSlot('sub1', 52, 73, e.subs[1]),
           ]),
