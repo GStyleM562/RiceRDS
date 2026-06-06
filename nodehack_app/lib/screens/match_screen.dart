@@ -351,6 +351,74 @@ class _MatchScreenState extends State<MatchScreen> {
         ]),
       );
 
+  // Deduce a quién (tú/rival) y a qué subrutina pertenece una línea del log, a
+  // partir de sus marcas de texto (que genera resolve()). 'sys' = línea de
+  // resultado/sistema (no atada a una carta concreta).
+  ({String owner, String? subId}) _tagOf(String l) {
+    final owner = l.contains('(rival)') ? 'opp' : (l.contains('(tú)') ? 'you' : 'sys');
+    String? sub;
+    if (l.contains('MIRROR ↔')) {
+      sub = null; // espejos anulados → línea de sistema
+    } else if (l.contains('OVERCLOCK')) {
+      sub = 'overclock';
+    } else if (l.contains('THROTTLE')) {
+      sub = 'throttle';
+    } else if (l.contains('MIRROR')) {
+      sub = 'mirror';
+    } else if (l.contains('INTRUSIÓN')) {
+      sub = 'shift_fwd';
+    } else if (l.contains('RECALIBRAR')) {
+      sub = 'shift_back';
+    } else if (l.contains('SABOTAJE')) {
+      sub = 'shift_opp_back';
+    } else if (l.contains('AVANCE')) {
+      sub = 'shift_you_fwd';
+    } else if (l.contains('CUARENTENA')) {
+      sub = 'cuarentena';
+    } else if (l.contains('SIGKILL')) {
+      sub = 'sigkill';
+    } else if (l.contains('FORK-BOMB')) {
+      sub = 'forkbomb';
+    }
+    return (owner: owner, subId: sub);
+  }
+
+  // Ordena el log para que cada línea aparezca cuando se ilumina su carta:
+  // rival (activo, sub0, sub1) → tú (activo, sub0, sub1) → resultado/sistema.
+  List<({String text, int delayMs})> _timedLog(RoundResult r) {
+    final lines = r.log;
+    final used = List<bool>.filled(lines.length, false);
+    final out = <({String text, int delayMs})>[];
+    int delayFor(int order) => 400 + 470 * order; // ~150ms tras encenderse la carta
+
+    void take(String owner, String? subId, int order) {
+      for (var i = 0; i < lines.length; i++) {
+        if (used[i]) continue;
+        final tag = _tagOf(lines[i]);
+        if (tag.owner == owner && tag.subId == subId) {
+          out.add((text: lines[i], delayMs: delayFor(order)));
+          used[i] = true;
+        }
+      }
+    }
+
+    final oppSubs = c.oppPlay?.subs ?? const <CardInstance>[];
+    take('opp', null, 0); // efectos de la Rutina rival (p. ej. BLINDAJE rival)
+    for (var i = 0; i < oppSubs.length && i < 2; i++) {
+      take('opp', oppSubs[i].sub?.id, 1 + i);
+    }
+    take('you', null, 3);
+    for (var i = 0; i < 2; i++) {
+      final s = c.subs[i];
+      if (s != null) take('you', s.sub?.id, 4 + i);
+    }
+    // Resto (resultado del enfrentamiento, espejos anulados…) al final.
+    for (var i = 0; i < lines.length; i++) {
+      if (!used[i]) out.add((text: lines[i], delayMs: delayFor(6)));
+    }
+    return out;
+  }
+
   // Log persistente que EXPLICA por qué fue ese resultado.
   Widget _explanation(RoundResult r) {
     final e = c;
@@ -390,11 +458,13 @@ class _MatchScreenState extends State<MatchScreen> {
             textAlign: TextAlign.center, style: NH.mono(size: 9.5, weight: FontWeight.w700, color: const Color(0xFFFF6B86))),
         if (r.log.isNotEmpty) ...[
           const SizedBox(height: 5),
-          // El log se va llenando efecto por efecto durante la EJECUCIÓN (al ritmo
-          // del spotlight de las cartas); en RESULTADO ya se muestra completo.
+          // El log se llena efecto por efecto durante la EJECUCIÓN, SINCRONIZADO con
+          // el spotlight: cada línea aparece cuando se ilumina la carta que la causó
+          // (rival primero, luego tú); las líneas de resultado, al final. En
+          // RESULTADO ya se muestra completo.
           _LogReveal(
             key: ValueKey('execlog${c.round}'),
-            lines: r.log.take(6).toList(),
+            entries: _timedLog(r),
             executing: c.phase.id == 'ejecucion',
             style: NH.mono(size: 8.5, color: NH.ink2, height: 1.35),
           ),
@@ -1164,23 +1234,30 @@ class _DischargePainter extends CustomPainter {
 /// aparece con un fade, repartidas a lo largo de la fase). En RESULTADO ya se
 /// muestra completo.
 class _LogReveal extends StatefulWidget {
-  final List<String> lines;
+  final List<({String text, int delayMs})> entries; // texto + cuándo aparece
   final bool executing;
   final TextStyle style;
-  const _LogReveal({super.key, required this.lines, required this.executing, required this.style});
+  const _LogReveal({super.key, required this.entries, required this.executing, required this.style});
 
   @override
   State<_LogReveal> createState() => _LogRevealState();
 }
 
 class _LogRevealState extends State<_LogReveal> with SingleTickerProviderStateMixin {
-  // Reparte la aparición de las líneas a lo largo de ~la ventana de ejecución.
-  late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 2900));
+  late final AnimationController _c;
+
+  int get _totalMs {
+    var m = 0;
+    for (final e in widget.entries) {
+      if (e.delayMs > m) m = e.delayMs;
+    }
+    return m + 450; // margen para el fade de la última
+  }
 
   @override
   void initState() {
     super.initState();
+    _c = AnimationController(vsync: this, duration: Duration(milliseconds: _totalMs <= 0 ? 1 : _totalMs));
     if (widget.executing) {
       _c.forward();
     } else {
@@ -1202,20 +1279,19 @@ class _LogRevealState extends State<_LogReveal> with SingleTickerProviderStateMi
 
   @override
   Widget build(BuildContext context) {
-    final total = widget.lines.length;
-    if (total == 0) return const SizedBox.shrink();
+    if (widget.entries.isEmpty) return const SizedBox.shrink();
     return AnimatedBuilder(
       animation: _c,
       builder: (context, _) {
-        final prog = _c.value;
+        final elapsed = _c.value * _totalMs;
         return Column(mainAxisSize: MainAxisSize.min, children: [
-          for (var i = 0; i < total; i++)
-            if (_op(prog, i, total) > 0)
+          for (final e in widget.entries)
+            if (_op(elapsed, e.delayMs) > 0)
               Opacity(
-                opacity: _op(prog, i, total),
+                opacity: _op(elapsed, e.delayMs),
                 child: Transform.translate(
-                  offset: Offset(0, (1 - _op(prog, i, total)) * 5),
-                  child: Text('· ${widget.lines[i]}', textAlign: TextAlign.center, style: widget.style),
+                  offset: Offset(0, (1 - _op(elapsed, e.delayMs)) * 5),
+                  child: Text('· ${e.text}', textAlign: TextAlign.center, style: widget.style),
                 ),
               ),
         ]);
@@ -1223,9 +1299,6 @@ class _LogRevealState extends State<_LogReveal> with SingleTickerProviderStateMi
     );
   }
 
-  // Opacidad de la línea i: aparece en su "franja" del progreso (fade suave).
-  double _op(double prog, int i, int total) {
-    final start = i / total;
-    return ((prog - start) * total).clamp(0.0, 1.0);
-  }
+  // Opacidad de una línea: 0 hasta su retardo, luego fade-in de 300ms.
+  double _op(double elapsedMs, int delayMs) => ((elapsedMs - delayMs) / 300).clamp(0.0, 1.0);
 }
