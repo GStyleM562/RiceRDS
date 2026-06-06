@@ -193,10 +193,10 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
       notifyListeners();
     });
     _after(1200, () {
-      _phaseIdx = 4; // EJECUCIÓN
+      _phaseIdx = 4; // EJECUCIÓN — se toma su tiempo para que se vean los efectos
       notifyListeners();
     });
-    _after(2000, () {
+    _after(4800, () {
       _phaseIdx = 5; // RESULTADO — aplica integridad junto con el "hit" (pips rotos)
       _applyPublic(pub);
       _history.add(r.winner);
@@ -215,8 +215,8 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
       if (pub.gameOver) {
         _gameOver = true;
         _outcome = pub.outcome;
-        // Pausa amplia para ver el último golpe y quién ganó la ronda/partida.
-        _after(2600, () => onFlush(MatchSummary(
+        // Pausa para ver la descarga/desconexión del perdedor antes de resultados.
+        _after(3200, () => onFlush(MatchSummary(
               outcome: pub.outcome ?? 'lose',
               round: pub.round,
               history: List.of(_history),

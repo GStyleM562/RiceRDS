@@ -118,7 +118,7 @@ void main() {
       'result': r.toJson(),
       'public': _public(you: 4, opp: 3),
     });
-    await Future<void>.delayed(const Duration(milliseconds: 2200));
+    await Future<void>.delayed(const Duration(milliseconds: 5000));
     expect(ctrl.oppPlay, isNotNull);
     expect(ctrl.result!.winner, Winner.you);
     expect(ctrl.phaseIdx, 5); // RESULTADO

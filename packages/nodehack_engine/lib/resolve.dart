@@ -125,13 +125,21 @@ RoundResult resolve(Play you, Play opp) {
     log.add('SIGKILL (rival) → anula tus subrutinas');
   }
 
-  // MIRROR — copia el tipo de la Rutina del otro.
-  if (_has(you, 'mirror') && !annulYou) {
+  // MIRROR — copia el tipo de la Rutina del otro. Recalcula los Ciclos al nivel
+  // del nuevo tipo (igual que los desplazamientos), para que tipo y Ciclos queden
+  // coherentes. Si AMBOS espejan, se ANULAN (cada uno copiaría al otro: paradoja)
+  // → ninguno cambia. Así el resultado es idéntico visto desde los dos lados.
+  final youMirror = _has(you, 'mirror') && !annulYou;
+  final oppMirror = _has(opp, 'mirror') && !annulOpp;
+  if (youMirror && oppMirror) {
+    log.add('MIRROR ↔ MIRROR → los dos espejos se anulan');
+  } else if (youMirror) {
     yT = oT;
+    yC = _tierCiclos(you.rutina, yT);
     log.add('MIRROR (tú) → copias el tipo del rival');
-  }
-  if (_has(opp, 'mirror') && !annulOpp) {
+  } else if (oppMirror) {
     oT = yT;
+    oC = _tierCiclos(opp.rutina, oT);
     log.add('MIRROR (rival) → copia tu tipo');
   }
 

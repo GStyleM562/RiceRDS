@@ -19,6 +19,13 @@ CardInstance _sub(String id) => CardInstance.subrutina(kSubById[id]!);
 
 Play _p(CardInstance r, [List<CardInstance> subs = const []]) => Play(r, subs);
 
+Play _build(String rid, CType? declared, List<String> subs) =>
+    Play(_rut(rid, declared: declared), [for (final s in subs) _sub(s)]);
+
+String _descPlay(Play p) =>
+    '${p.rutina.rut?.id}${p.rutina.declaredType != null ? "(${p.rutina.declaredType!.short})" : ""}'
+    '+[${p.subs.map((s) => s.sub?.id).join(",")}]';
+
 void main() {
   group('resolve / triángulo', () {
     test('CORTAFUEGOS vence a EXPLOIT', () {
@@ -250,6 +257,94 @@ void main() {
           expect((seen[id] ?? const {}).length, lessThanOrEqualTo(count),
               reason: 'semilla $seed: sub $id superó $count copias');
         });
+      }
+    });
+  });
+
+  group('resolución correcta y consistente (auditoría del CAOS)', () {
+    // Todas las jugadas posibles: cada Rutina (con NULL declarado a sus 3 tipos)
+    // × 0, 1 o 2 Subrutinas distintas (el tope real del juego).
+    List<Play> _allPlays() {
+      final rutCfgs = <(String, CType?)>[
+        ('fw_base', null), ('fw_iron', null),
+        ('xp_base', null), ('xp_zero', null),
+        ('pl_base', null), ('pl_emp', null),
+        ('null_sh', CType.firewall), ('null_sh', CType.exploit), ('null_sh', CType.signal),
+      ];
+      final subIds = kSubrutinas.map((s) => s.id).toList();
+      final combos = <List<String>>[const []];
+      for (final s in subIds) {
+        combos.add([s]);
+      }
+      for (var i = 0; i < subIds.length; i++) {
+        for (var j = i + 1; j < subIds.length; j++) {
+          combos.add([subIds[i], subIds[j]]);
+        }
+      }
+      return [
+        for (final (rid, dt) in rutCfgs)
+          for (final c in combos) _build(rid, dt, c),
+      ];
+    }
+
+    test('CONSISTENCIA: el ganador desde ambos lados SIEMPRE coincide (todas las combinaciones)', () {
+      final plays = _allPlays(); // resolve() no muta las cartas → se pueden reusar
+      var pairs = 0;
+      for (final a in plays) {
+        for (final b in plays) {
+          final r1 = resolve(a, b); // perspectiva de A
+          final r2 = resolve(b, a); // perspectiva de B
+          // Si A gana desde su vista, B DEBE perder desde la suya (y viceversa).
+          expect(r1.winner, flipWinner(r2.winner),
+              reason: 'INCONSISTENCIA\n  A=${_descPlay(a)}\n  B=${_descPlay(b)}\n'
+                  '  resolve(A,B).winner=${r1.winner}  resolve(B,A).winner=${r2.winner}');
+          // El daño es el mismo número visto desde cualquier lado.
+          expect(r1.damage, r2.damage,
+              reason: 'daño distinto: A=${_descPlay(a)} B=${_descPlay(b)}');
+          // Un empate nunca aplica daño.
+          if (r1.winner == Winner.draw) expect(r1.damage, 0);
+          pairs++;
+        }
+      }
+      expect(pairs, plays.length * plays.length);
+    });
+
+    test('CORRECCIÓN: caos de desplazamientos da el ganador correcto', () {
+      // Tú PULSO(5) + AVANCE(→firewall) + OVERCLOCK(+4) ⇒ firewall, 9.
+      // Rival CORTAFUEGOS(5). Espejo firewall ⇒ 9 vs 5 ⇒ ganas tú.
+      final r = resolve(
+        _build('pl_base', null, ['shift_you_fwd', 'overclock']),
+        _build('fw_base', null, const []),
+      );
+      expect(r.youType, CType.firewall);
+      expect(r.youCiclos, 9);
+      expect(r.winner, Winner.you);
+
+      // El rival te SABOTEA (firewall→signal) y tú lo INTRUSIONas (su exploit→signal):
+      // ambos signal ⇒ deciden Ciclos. fw_base(5, básica→signal=5) vs xp_base(5,→signal 5) ⇒ empate.
+      final r2 = resolve(
+        _build('fw_base', null, ['shift_fwd']), // tu INTRUSIÓN mueve al rival
+        _build('xp_base', null, ['shift_opp_back']), // SABOTAJE del rival te mueve a ti
+      );
+      // Tú: fw → signal (por SABOTAJE rival). Rival: xp → signal (por tu INTRUSIÓN).
+      expect(r2.youType, CType.signal);
+      expect(r2.oppType, CType.signal);
+      expect(r2.winner, Winner.draw); // espejo 5 vs 5
+    });
+
+    test('CONSISTENCIA bajo SIGKILL (anula las subrutinas del otro)', () {
+      final plays = _allPlays();
+      // Comprobación extra centrada en SIGKILL combinado con desplazamientos.
+      final sk = [
+        _build('fw_base', null, ['sigkill', 'shift_fwd']),
+        _build('xp_base', null, ['sigkill']),
+        _build('pl_base', null, ['shift_back', 'sigkill']),
+      ];
+      for (final a in sk) {
+        for (final b in plays) {
+          expect(resolve(a, b).winner, flipWinner(resolve(b, a).winner),
+              reason: 'SIGKILL A=${_descPlay(a)} B=${_descPlay(b)}');
+        }
       }
     });
   });

@@ -87,7 +87,7 @@ void main() {
       if (ctrl.engine.needsNullDeclaration) ctrl.declareNull(CType.firewall);
       expect(ctrl.engine.canCompile, isTrue);
       ctrl.compile();
-      await t.pump(const Duration(milliseconds: 2800)); // corre las fases hasta RESULTADO
+      await t.pump(const Duration(milliseconds: 5600)); // corre las fases hasta RESULTADO
       expect(t.takeException(), isNull);
       if (!ctrl.engine.gameOver) {
         ctrl.nextRound();

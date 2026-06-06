@@ -151,11 +151,12 @@ class MatchController extends ChangeNotifier implements MatchView {
       notifyListeners();
     });
     _after(1900, () {
-      phaseIdx = 4; // EJECUCIÓN
+      phaseIdx = 4; // EJECUCIÓN — se toma su tiempo para que se vean los efectos
       notifyListeners();
     });
-    _after(2700, () {
+    _after(5500, () {
       phaseIdx = 5; // RESULTADO
+
       engine.applyResult();
       final r = engine.result!;
       history.add(r.winner);

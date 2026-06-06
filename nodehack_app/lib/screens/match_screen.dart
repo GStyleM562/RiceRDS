@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -158,6 +159,9 @@ class _MatchScreenState extends State<MatchScreen> {
                   const Spacer(),
                   HitEffects(active: c.hit?.side == 'you', child: _youZone()),
                 ]),
+                // En RESULTADO con golpe: ilumina al ganador y le "descarga" al perdedor.
+                if (c.phase.id == 'resultado' && c.hit != null) _winnerGlow(),
+                if (c.phase.id == 'resultado' && c.hit != null) _dischargeFx(),
                 if (_drag != null && _dragActive)
                   Positioned(
                     left: _drag!.pos.dx - 45,
@@ -244,13 +248,13 @@ class _MatchScreenState extends State<MatchScreen> {
           ),
           const SizedBox(height: 3),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            _slot(width: 52, height: 73, child: _oppSub(opp, 0)),
+            _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 0), 1, NH.xp)),
             const SizedBox(width: 10),
             _slot(width: 72, height: 100, filled: opp != null, child: opp != null
-                ? (c.revealed ? _oppCard(opp.rutina, 72) : const CardBackView(width: 72, seed: 42))
+                ? (c.revealed ? _execWrap(_oppCard(opp.rutina, 72), 0, NH.xp) : const CardBackView(width: 72, seed: 42))
                 : null),
             const SizedBox(width: 10),
-            _slot(width: 52, height: 73, child: _oppSub(opp, 1)),
+            _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 1), 2, NH.xp)),
           ]),
         ]),
         if (c.hit?.side == 'opp') _floatingDmg(),
@@ -618,6 +622,58 @@ class _MatchScreenState extends State<MatchScreen> {
         builder: (_, t) => Transform.scale(scale: 0.55 + t * 0.45, child: CardView(card: card, width: width, animate: false)),
       );
 
+  // Spotlight de EJECUCIÓN: durante la fase 'ejecucion', cada carta jugada se
+  // levanta/ilumina por turnos (rival primero, luego tú) para indicar que actuó.
+  Widget _execWrap(Widget card, int order, Color glow) {
+    if (c.phase.id != 'ejecucion') return card;
+    return _ExecFx(key: ValueKey('exec$order${c.round}'), order: order, glow: glow, child: card);
+  }
+
+  Widget? _execWrapMaybe(Widget? card, int order, Color glow) =>
+      card == null ? null : _execWrap(card, order, glow);
+
+  // Descarga del GANADOR hacia el perdedor (rayo de energía) — además del daño recibido.
+  Widget _dischargeFx() {
+    final hit = c.hit;
+    if (hit == null) return const SizedBox.shrink();
+    final youWon = hit.side == 'opp'; // el rival recibió el daño ⇒ ganaste tú
+    final color = youWon ? NH.pl : NH.xp; // color del GANADOR
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: OneShot(
+          key: ValueKey('disch${c.round}'),
+          duration: const Duration(milliseconds: 750),
+          builder: (_, t) => CustomPaint(painter: _DischargePainter(t: t, towardTop: youWon, color: color)),
+        ),
+      ),
+    );
+  }
+
+  // Iluminación del GANADOR (su zona se enciende: "absorbió"/ganó fuerza).
+  Widget _winnerGlow() {
+    final hit = c.hit;
+    if (hit == null) return const SizedBox.shrink();
+    final youWon = hit.side == 'opp';
+    final color = youWon ? NH.pl : NH.xp;
+    final center = youWon ? const Alignment(0, .74) : const Alignment(0, -.66);
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: OneShot(
+          key: ValueKey('wglow${c.round}'),
+          duration: const Duration(milliseconds: 950),
+          builder: (_, t) {
+            final p = (t < .3 ? t / .3 : 1 - (t - .3) / .7).clamp(0.0, 1.0);
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(center: center, radius: .8, colors: [NH.a(color, .3 * p), Colors.transparent]),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+  }
+
   Widget _slot({required double width, required double height, Widget? child, bool filled = false}) => Container(
         width: width, height: height, alignment: Alignment.center,
         decoration: BoxDecoration(
@@ -653,7 +709,7 @@ class _MatchScreenState extends State<MatchScreen> {
                   c.returnSub(id == 'sub0' ? 0 : 1);
                 }
               },
-              child: _popCard(card, width),
+              child: _execWrap(_popCard(card, width), id == 'active' ? 3 : (id == 'sub0' ? 4 : 5), NH.pl),
             )
           : Text(id == 'active' ? 'ACTIVO' : 'SUB', style: NH.mono(size: 8, color: const Color(0xFF34405A), spacing: 1.8)),
     );
@@ -931,4 +987,111 @@ class _GlitchPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _GlitchPainter old) => true;
+}
+
+/// Spotlight de una carta jugada durante la EJECUCIÓN: tras su retardo (según el
+/// orden del barrido), se levanta + escala + ilumina un instante.
+class _ExecFx extends StatefulWidget {
+  final Widget child;
+  final int order;
+  final Color glow;
+  const _ExecFx({super.key, required this.child, required this.order, required this.glow});
+
+  @override
+  State<_ExecFx> createState() => _ExecFxState();
+}
+
+class _ExecFxState extends State<_ExecFx> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 620));
+  Timer? _t;
+
+  @override
+  void initState() {
+    super.initState();
+    _t = Timer(Duration(milliseconds: 250 + 470 * widget.order), () {
+      if (mounted) _c.forward(from: 0);
+    });
+  }
+
+  @override
+  void dispose() {
+    _t?.cancel();
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, child) {
+        final p = sin(_c.value * pi); // 0 → 1 → 0
+        return Transform.translate(
+          offset: Offset(0, -12 * p),
+          child: Transform.scale(
+            scale: 1 + 0.18 * p,
+            child: DecoratedBox(
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(6),
+                boxShadow: [BoxShadow(color: NH.a(widget.glow, .7 * p), blurRadius: 26 * p, spreadRadius: 2 * p)],
+              ),
+              child: child,
+            ),
+          ),
+        );
+      },
+      child: widget.child,
+    );
+  }
+}
+
+/// Rayo de "descarga" del ganador hacia el perdedor (recorre la pantalla y estalla).
+class _DischargePainter extends CustomPainter {
+  final double t; // 0..1
+  final bool towardTop; // el perdedor está arriba (rival) si true
+  final Color color;
+  _DischargePainter({required this.t, required this.towardTop, required this.color});
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final winnerY = towardTop ? size.height * .80 : size.height * .20;
+    final loserY = towardTop ? size.height * .20 : size.height * .80;
+    final headY = winnerY + (loserY - winnerY) * t.clamp(0.0, 1.0);
+    final rnd = Random((t * 60).floor() * 7 + 3); // re-aleatoriza por frame (flicker)
+
+    final path = Path()..moveTo(cx, winnerY);
+    const steps = 11;
+    for (var i = 1; i <= steps; i++) {
+      final f = i / steps;
+      final y = winnerY + (headY - winnerY) * f;
+      final x = cx + (rnd.nextDouble() - .5) * 42 * (1 - f * .25);
+      path.lineTo(x, y);
+    }
+    canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 6
+          ..color = NH.a(color, .55)
+          ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
+    canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 2.4
+          ..strokeCap = StrokeCap.round
+          ..color = Colors.white);
+
+    // Estallido en el perdedor cuando el rayo llega.
+    if (t > .5) {
+      final f = ((t - .5) / .5).clamp(0.0, 1.0);
+      canvas.drawCircle(Offset(cx, loserY), 70 * f,
+          Paint()..color = NH.a(color, .4 * (1 - f))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _DischargePainter old) => true;
 }
