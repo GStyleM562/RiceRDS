@@ -390,8 +390,14 @@ class _MatchScreenState extends State<MatchScreen> {
             textAlign: TextAlign.center, style: NH.mono(size: 9.5, weight: FontWeight.w700, color: const Color(0xFFFF6B86))),
         if (r.log.isNotEmpty) ...[
           const SizedBox(height: 5),
-          for (final l in r.log.take(6))
-            Text('· $l', textAlign: TextAlign.center, style: NH.mono(size: 8.5, color: NH.ink2, height: 1.35)),
+          // El log se va llenando efecto por efecto durante la EJECUCIÓN (al ritmo
+          // del spotlight de las cartas); en RESULTADO ya se muestra completo.
+          _LogReveal(
+            key: ValueKey('execlog${c.round}'),
+            lines: r.log.take(6).toList(),
+            executing: c.phase.id == 'ejecucion',
+            style: NH.mono(size: 8.5, color: NH.ink2, height: 1.35),
+          ),
         ],
         const SizedBox(height: 5),
         Text('→ $verdict',
@@ -1152,4 +1158,74 @@ class _DischargePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DischargePainter old) => true;
+}
+
+/// Log que se va LLENANDO efecto por efecto durante la EJECUCIÓN (cada línea
+/// aparece con un fade, repartidas a lo largo de la fase). En RESULTADO ya se
+/// muestra completo.
+class _LogReveal extends StatefulWidget {
+  final List<String> lines;
+  final bool executing;
+  final TextStyle style;
+  const _LogReveal({super.key, required this.lines, required this.executing, required this.style});
+
+  @override
+  State<_LogReveal> createState() => _LogRevealState();
+}
+
+class _LogRevealState extends State<_LogReveal> with SingleTickerProviderStateMixin {
+  // Reparte la aparición de las líneas a lo largo de ~la ventana de ejecución.
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 2900));
+
+  @override
+  void initState() {
+    super.initState();
+    if (widget.executing) {
+      _c.forward();
+    } else {
+      _c.value = 1; // ya en RESULTADO: todo visible
+    }
+  }
+
+  @override
+  void didUpdateWidget(_LogReveal old) {
+    super.didUpdateWidget(old);
+    if (!widget.executing && _c.value < 1) _c.value = 1; // al pasar a RESULTADO, completa
+  }
+
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final total = widget.lines.length;
+    if (total == 0) return const SizedBox.shrink();
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (context, _) {
+        final prog = _c.value;
+        return Column(mainAxisSize: MainAxisSize.min, children: [
+          for (var i = 0; i < total; i++)
+            if (_op(prog, i, total) > 0)
+              Opacity(
+                opacity: _op(prog, i, total),
+                child: Transform.translate(
+                  offset: Offset(0, (1 - _op(prog, i, total)) * 5),
+                  child: Text('· ${widget.lines[i]}', textAlign: TextAlign.center, style: widget.style),
+                ),
+              ),
+        ]);
+      },
+    );
+  }
+
+  // Opacidad de la línea i: aparece en su "franja" del progreso (fade suave).
+  double _op(double prog, int i, int total) {
+    final start = i / total;
+    return ((prog - start) * total).clamp(0.0, 1.0);
+  }
 }
