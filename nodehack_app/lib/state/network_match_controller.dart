@@ -188,15 +188,22 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
     _phaseIdx = 3; // REVELACIÓN
     _revealed = false;
     notifyListeners();
+    // La EJECUCIÓN dura según cuántas cartas se jugaron (una parada por carta + resultado).
+    final items = 1 +
+        _subs.whereType<CardInstance>().length +
+        1 +
+        _oppPlay!.subs.length;
+    const execStart = 1200;
+    final resultAt = execStart + (items + 1) * kExecStepMs + 300;
     _after(350, () {
       _revealed = true;
       notifyListeners();
     });
-    _after(1200, () {
-      _phaseIdx = 4; // EJECUCIÓN — se toma su tiempo para que se vean los efectos
+    _after(execStart, () {
+      _phaseIdx = 4; // EJECUCIÓN — la mesa enfoca carta por carta a kExecStepMs
       notifyListeners();
     });
-    _after(4800, () {
+    _after(resultAt, () {
       _phaseIdx = 5; // RESULTADO — aplica integridad junto con el "hit" (pips rotos)
       _applyPublic(pub);
       _history.add(r.winner);

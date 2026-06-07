@@ -10,6 +10,12 @@ import 'package:nodehack_engine/cards.dart';
 import 'package:nodehack_engine/resolve.dart';
 import 'package:nodehack_engine/types.dart';
 
+/// Ritmo de la fase de EJECUCIÓN: cuánto dura el foco de cada carta jugada antes
+/// de pasar a la siguiente (la mesa enfoca la carta y muestra su línea de log).
+/// La duración total de la ejecución se calcula a partir de esto y del nº de
+/// cartas jugadas, tanto en el controlador (tiempos) como en la mesa (spotlight).
+const int kExecStepMs = 800;
+
 /// Resumen de fin de partida que se entrega a la pantalla de resultados.
 class MatchSummary {
   final String outcome; // 'win' | 'lose'

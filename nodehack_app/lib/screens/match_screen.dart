@@ -39,6 +39,13 @@ class _MatchScreenState extends State<MatchScreen> {
   String? _hover;
   bool _confirmExit = false; // overlay "¿RENDIRSE?"
 
+  // ---- Secuenciador de EJECUCIÓN (un solo reloj: enfoca carta → muestra su log) ----
+  String _prevPhase = '';
+  Timer? _execTimer;
+  int _execStep = -1; // índice de la carta enfocada (-1 = ninguna)
+  List<String> _execIds = const []; // orden: tú (activo, subs) → rival (activo, subs)
+  List<List<String>> _stepLines = const []; // líneas del log por paso
+
   MatchView get c => widget.ctrl;
   RenderBox? get _rootBox => _rootKey.currentContext?.findRenderObject() as RenderBox?;
 
@@ -46,13 +53,104 @@ class _MatchScreenState extends State<MatchScreen> {
   void initState() {
     super.initState();
     AudioService.instance.playMusic(Music.combat); // música de combate
+    _prevPhase = c.phase.id;
+    c.addListener(_onCtrl);
   }
 
   @override
   void dispose() {
+    c.removeListener(_onCtrl);
+    _execTimer?.cancel();
     AudioService.instance.playMusic(Music.menu); // al salir, vuelve la del menú
     super.dispose();
   }
+
+  // Detecta el paso a EJECUCIÓN para arrancar el secuenciador (y lo apaga al salir).
+  void _onCtrl() {
+    final p = c.phase.id;
+    if (p == _prevPhase) return;
+    _prevPhase = p;
+    if (p == 'ejecucion') {
+      _startExecSequence();
+    } else {
+      _execTimer?.cancel();
+      if (_execStep != -1 && mounted) setState(() => _execStep = -1);
+    }
+  }
+
+  // Construye el orden de cartas + sus líneas de log, y avanza el foco a kExecStepMs.
+  void _startExecSequence() {
+    final r = c.result;
+    final ids = <String>[];
+    if (c.active != null) ids.add('you-active');
+    for (var i = 0; i < 2; i++) {
+      if (c.subs[i] != null) ids.add('you-sub$i');
+    }
+    final opp = c.oppPlay;
+    if (opp != null) {
+      ids.add('opp-active');
+      for (var i = 0; i < opp.subs.length && i < 2; i++) {
+        ids.add('opp-sub$i');
+      }
+    }
+    _execIds = ids;
+    _stepLines = _buildStepLines(r, ids);
+
+    _execTimer?.cancel();
+    setState(() => _execStep = 0);
+    final maxStep = ids.length; // último paso = líneas de resultado/sistema
+    _execTimer = Timer.periodic(Duration(milliseconds: kExecStepMs), (t) {
+      if (!mounted) {
+        t.cancel();
+        return;
+      }
+      if (_execStep >= maxStep) {
+        t.cancel();
+        return;
+      }
+      setState(() => _execStep++);
+    });
+  }
+
+  // Reparte las líneas del log en pasos: una "ranura" por carta (en el orden de
+  // [ids]) + una final con las líneas de resultado/sistema. Mapea por las marcas
+  // (tú)/(rival)+efecto que ya trae cada línea.
+  List<List<String>> _buildStepLines(RoundResult? r, List<String> ids) {
+    final steps = List<List<String>>.generate(ids.length + 1, (_) => <String>[]);
+    if (r == null) return steps;
+    final lines = r.log;
+    final used = List<bool>.filled(lines.length, false);
+
+    ({String owner, String? subId}) targetOf(String id) {
+      if (id == 'you-active') return (owner: 'you', subId: null);
+      if (id == 'opp-active') return (owner: 'opp', subId: null);
+      final youSub = id.startsWith('you-sub');
+      final slot = int.parse(id.substring(id.length - 1));
+      final card = youSub ? c.subs[slot] : c.oppPlay?.subs[slot];
+      return (owner: youSub ? 'you' : 'opp', subId: card?.sub?.id);
+    }
+
+    for (var s = 0; s < ids.length; s++) {
+      final tgt = targetOf(ids[s]);
+      for (var i = 0; i < lines.length; i++) {
+        if (used[i]) continue;
+        final tag = _tagOf(lines[i]);
+        if (tag.owner == tgt.owner && tag.subId == tgt.subId) {
+          steps[s].add(lines[i]);
+          used[i] = true;
+        }
+      }
+    }
+    // Líneas restantes (resultado del enfrentamiento, espejos anulados…) al final.
+    for (var i = 0; i < lines.length; i++) {
+      if (!used[i]) steps[ids.length].add(lines[i]);
+    }
+    return steps;
+  }
+
+  // Id de la carta enfocada ahora mismo (o null).
+  String? get _focusedExecId =>
+      (_execStep >= 0 && _execStep < _execIds.length) ? _execIds[_execStep] : null;
 
   List<String> _validTargets(CardInstance card) {
     if (!card.isSub) return ['active'];
@@ -248,15 +346,15 @@ class _MatchScreenState extends State<MatchScreen> {
           ),
           const SizedBox(height: 3),
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-            _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 0), 1, NH.xp)),
+            _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 0), 'opp-sub0', NH.xp)),
             const SizedBox(width: 10),
             _morphOverlay(
               _slot(width: 72, height: 100, filled: opp != null, child: opp != null
-                  ? (c.revealed ? _execWrap(_oppCard(opp.rutina, 72), 0, NH.xp) : const CardBackView(width: 72, seed: 42))
+                  ? (c.revealed ? _execWrap(_oppCard(opp.rutina, 72), 'opp-active', NH.xp) : const CardBackView(width: 72, seed: 42))
                   : null),
               c.result?.oppType, opp?.rutina.type),
             const SizedBox(width: 10),
-            _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 1), 2, NH.xp)),
+            _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 1), 'opp-sub1', NH.xp)),
           ]),
         ]),
         if (c.hit?.side == 'opp') _floatingDmg(),
@@ -383,40 +481,34 @@ class _MatchScreenState extends State<MatchScreen> {
     return (owner: owner, subId: sub);
   }
 
-  // Ordena el log para que cada línea aparezca cuando se ilumina su carta:
-  // rival (activo, sub0, sub1) → tú (activo, sub0, sub1) → resultado/sistema.
-  List<({String text, int delayMs})> _timedLog(RoundResult r) {
-    final lines = r.log;
-    final used = List<bool>.filled(lines.length, false);
-    final out = <({String text, int delayMs})>[];
-    int delayFor(int order) => 400 + 470 * order; // ~150ms tras encenderse la carta
-
-    void take(String owner, String? subId, int order) {
-      for (var i = 0; i < lines.length; i++) {
-        if (used[i]) continue;
-        final tag = _tagOf(lines[i]);
-        if (tag.owner == owner && tag.subId == subId) {
-          out.add((text: lines[i], delayMs: delayFor(order)));
-          used[i] = true;
-        }
+  // Log mostrado durante EJECUCIÓN/RESULTADO. En ejecución, acumula las líneas
+  // de los pasos ya enfocados (_execStep) → cada carta "suelta" su línea cuando se
+  // ilumina. En resultado, muestra todo. Cada línea nueva entra con un fade.
+  Widget _execLogView(RoundResult r, TextStyle style) {
+    final executing = c.phase.id == 'ejecucion';
+    final visible = <String>[];
+    if (!executing || _stepLines.isEmpty) {
+      visible.addAll(r.log);
+    } else {
+      final upto = _execStep.clamp(0, _stepLines.length - 1);
+      for (var s = 0; s <= upto; s++) {
+        visible.addAll(_stepLines[s]);
       }
     }
-
-    final oppSubs = c.oppPlay?.subs ?? const <CardInstance>[];
-    take('opp', null, 0); // efectos de la Rutina rival (p. ej. BLINDAJE rival)
-    for (var i = 0; i < oppSubs.length && i < 2; i++) {
-      take('opp', oppSubs[i].sub?.id, 1 + i);
-    }
-    take('you', null, 3);
-    for (var i = 0; i < 2; i++) {
-      final s = c.subs[i];
-      if (s != null) take('you', s.sub?.id, 4 + i);
-    }
-    // Resto (resultado del enfrentamiento, espejos anulados…) al final.
-    for (var i = 0; i < lines.length; i++) {
-      if (!used[i]) out.add((text: lines[i], delayMs: delayFor(6)));
-    }
-    return out;
+    return Column(mainAxisSize: MainAxisSize.min, children: [
+      for (var i = 0; i < visible.length; i++)
+        OneShot(
+          key: ValueKey('logl-${c.round}-$i'),
+          duration: const Duration(milliseconds: 280),
+          builder: (_, t) => Opacity(
+            opacity: t,
+            child: Transform.translate(
+              offset: Offset(0, (1 - t) * 5),
+              child: Text('· ${visible[i]}', textAlign: TextAlign.center, style: style),
+            ),
+          ),
+        ),
+    ]);
   }
 
   // Log persistente que EXPLICA por qué fue ese resultado.
@@ -459,15 +551,9 @@ class _MatchScreenState extends State<MatchScreen> {
         if (r.log.isNotEmpty) ...[
           const SizedBox(height: 5),
           // El log se llena efecto por efecto durante la EJECUCIÓN, SINCRONIZADO con
-          // el spotlight: cada línea aparece cuando se ilumina la carta que la causó
-          // (rival primero, luego tú); las líneas de resultado, al final. En
-          // RESULTADO ya se muestra completo.
-          _LogReveal(
-            key: ValueKey('execlog${c.round}'),
-            entries: _timedLog(r),
-            executing: c.phase.id == 'ejecucion',
-            style: NH.mono(size: 8.5, color: NH.ink2, height: 1.35),
-          ),
+          // el secuenciador: cada línea aparece cuando se ilumina la carta que la
+          // causó (tú primero, luego rival); el resultado, al final.
+          _execLogView(r, NH.mono(size: 8.5, color: NH.ink2, height: 1.35)),
         ],
         const SizedBox(height: 5),
         Text('→ $verdict',
@@ -756,15 +842,20 @@ class _MatchScreenState extends State<MatchScreen> {
         builder: (_, t) => Transform.scale(scale: 0.55 + t * 0.45, child: CardView(card: card, width: width, animate: false)),
       );
 
-  // Spotlight de EJECUCIÓN: durante la fase 'ejecucion', cada carta jugada se
-  // levanta/ilumina por turnos (rival primero, luego tú) para indicar que actuó.
-  Widget _execWrap(Widget card, int order, Color glow) {
+  // Spotlight de EJECUCIÓN: la carta se levanta/ilumina mientras el secuenciador
+  // la tiene enfocada (su línea de log aparece a la vez). Un solo reloj coordina todo.
+  Widget _execWrap(Widget card, String execId, Color glow) {
     if (c.phase.id != 'ejecucion') return card;
-    return _ExecFx(key: ValueKey('exec$order${c.round}'), order: order, glow: glow, child: card);
+    return _ExecFx(
+      key: ValueKey('exec-$execId-${c.round}'),
+      spotlighted: _focusedExecId == execId,
+      glow: glow,
+      child: card,
+    );
   }
 
-  Widget? _execWrapMaybe(Widget? card, int order, Color glow) =>
-      card == null ? null : _execWrap(card, order, glow);
+  Widget? _execWrapMaybe(Widget? card, String execId, Color glow) =>
+      card == null ? null : _execWrap(card, execId, glow);
 
   // Descarga del GANADOR hacia el perdedor (rayo de energía) — además del daño recibido.
   Widget _dischargeFx() {
@@ -843,7 +934,7 @@ class _MatchScreenState extends State<MatchScreen> {
                   c.returnSub(id == 'sub0' ? 0 : 1);
                 }
               },
-              child: _execWrap(_popCard(card, width), id == 'active' ? 3 : (id == 'sub0' ? 4 : 5), NH.pl),
+              child: _execWrap(_popCard(card, width), id == 'active' ? 'you-active' : (id == 'sub0' ? 'you-sub0' : 'you-sub1'), NH.pl),
             )
           : Text(id == 'active' ? 'ACTIVO' : 'SUB', style: NH.mono(size: 8, color: const Color(0xFF34405A), spacing: 1.8)),
     );
@@ -1123,13 +1214,14 @@ class _GlitchPainter extends CustomPainter {
   bool shouldRepaint(covariant _GlitchPainter old) => true;
 }
 
-/// Spotlight de una carta jugada durante la EJECUCIÓN: tras su retardo (según el
-/// orden del barrido), se levanta + escala + ilumina un instante.
+/// Spotlight de una carta durante la EJECUCIÓN: cuando el secuenciador la ENFOCA
+/// (`spotlighted`), pulsa (sube + escala + ilumina) y queda algo elevada mientras
+/// dure su turno; al perder el foco vuelve a su sitio.
 class _ExecFx extends StatefulWidget {
   final Widget child;
-  final int order;
+  final bool spotlighted;
   final Color glow;
-  const _ExecFx({super.key, required this.child, required this.order, required this.glow});
+  const _ExecFx({super.key, required this.child, required this.spotlighted, required this.glow});
 
   @override
   State<_ExecFx> createState() => _ExecFxState();
@@ -1137,20 +1229,22 @@ class _ExecFx extends StatefulWidget {
 
 class _ExecFxState extends State<_ExecFx> with SingleTickerProviderStateMixin {
   late final AnimationController _c =
-      AnimationController(vsync: this, duration: const Duration(milliseconds: 620));
-  Timer? _t;
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 600));
 
   @override
   void initState() {
     super.initState();
-    _t = Timer(Duration(milliseconds: 250 + 470 * widget.order), () {
-      if (mounted) _c.forward(from: 0);
-    });
+    if (widget.spotlighted) _c.forward(from: 0);
+  }
+
+  @override
+  void didUpdateWidget(_ExecFx old) {
+    super.didUpdateWidget(old);
+    if (widget.spotlighted && !old.spotlighted) _c.forward(from: 0);
   }
 
   @override
   void dispose() {
-    _t?.cancel();
     _c.dispose();
     super.dispose();
   }
@@ -1160,15 +1254,19 @@ class _ExecFxState extends State<_ExecFx> with SingleTickerProviderStateMixin {
     return AnimatedBuilder(
       animation: _c,
       builder: (context, child) {
-        final p = sin(_c.value * pi); // 0 → 1 → 0
+        final pulse = sin(_c.value.clamp(0.0, 1.0) * pi); // 0 → 1 → 0
+        final held = widget.spotlighted ? 1.0 : 0.0; // se mantiene enfocada su turno
+        final lift = 9 * pulse + 3 * held;
+        final scale = 1 + 0.15 * pulse + 0.03 * held;
+        final glowP = (pulse * .8 + held * .35).clamp(0.0, 1.0);
         return Transform.translate(
-          offset: Offset(0, -12 * p),
+          offset: Offset(0, -lift),
           child: Transform.scale(
-            scale: 1 + 0.18 * p,
+            scale: scale,
             child: DecoratedBox(
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(6),
-                boxShadow: [BoxShadow(color: NH.a(widget.glow, .7 * p), blurRadius: 26 * p, spreadRadius: 2 * p)],
+                boxShadow: [BoxShadow(color: NH.a(widget.glow, .7 * glowP), blurRadius: 26 * glowP, spreadRadius: 2 * glowP)],
               ),
               child: child,
             ),
@@ -1228,77 +1326,4 @@ class _DischargePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _DischargePainter old) => true;
-}
-
-/// Log que se va LLENANDO efecto por efecto durante la EJECUCIÓN (cada línea
-/// aparece con un fade, repartidas a lo largo de la fase). En RESULTADO ya se
-/// muestra completo.
-class _LogReveal extends StatefulWidget {
-  final List<({String text, int delayMs})> entries; // texto + cuándo aparece
-  final bool executing;
-  final TextStyle style;
-  const _LogReveal({super.key, required this.entries, required this.executing, required this.style});
-
-  @override
-  State<_LogReveal> createState() => _LogRevealState();
-}
-
-class _LogRevealState extends State<_LogReveal> with SingleTickerProviderStateMixin {
-  late final AnimationController _c;
-
-  int get _totalMs {
-    var m = 0;
-    for (final e in widget.entries) {
-      if (e.delayMs > m) m = e.delayMs;
-    }
-    return m + 450; // margen para el fade de la última
-  }
-
-  @override
-  void initState() {
-    super.initState();
-    _c = AnimationController(vsync: this, duration: Duration(milliseconds: _totalMs <= 0 ? 1 : _totalMs));
-    if (widget.executing) {
-      _c.forward();
-    } else {
-      _c.value = 1; // ya en RESULTADO: todo visible
-    }
-  }
-
-  @override
-  void didUpdateWidget(_LogReveal old) {
-    super.didUpdateWidget(old);
-    if (!widget.executing && _c.value < 1) _c.value = 1; // al pasar a RESULTADO, completa
-  }
-
-  @override
-  void dispose() {
-    _c.dispose();
-    super.dispose();
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    if (widget.entries.isEmpty) return const SizedBox.shrink();
-    return AnimatedBuilder(
-      animation: _c,
-      builder: (context, _) {
-        final elapsed = _c.value * _totalMs;
-        return Column(mainAxisSize: MainAxisSize.min, children: [
-          for (final e in widget.entries)
-            if (_op(elapsed, e.delayMs) > 0)
-              Opacity(
-                opacity: _op(elapsed, e.delayMs),
-                child: Transform.translate(
-                  offset: Offset(0, (1 - _op(elapsed, e.delayMs)) * 5),
-                  child: Text('· ${e.text}', textAlign: TextAlign.center, style: widget.style),
-                ),
-              ),
-        ]);
-      },
-    );
-  }
-
-  // Opacidad de una línea: 0 hasta su retardo, luego fade-in de 300ms.
-  double _op(double elapsedMs, int delayMs) => ((elapsedMs - delayMs) / 300).clamp(0.0, 1.0);
 }

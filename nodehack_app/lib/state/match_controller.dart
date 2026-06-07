@@ -142,6 +142,14 @@ class MatchController extends ChangeNotifier implements MatchView {
     engine.compile(); // CPU programa + resuelve (oculto hasta revelar)
     phaseIdx = 2;
     notifyListeners();
+    // La EJECUCIÓN dura según cuántas cartas se jugaron: una "parada" por carta
+    // (tú activo+subs, rival activo+subs) + una para el resultado.
+    final items = 1 +
+        engine.subs.whereType<CardInstance>().length +
+        1 +
+        engine.oppPlay!.subs.length;
+    const execStart = 1900;
+    final resultAt = execStart + (items + 1) * kExecStepMs + 300;
     _after(700, () {
       phaseIdx = 3; // REVELACIÓN
       notifyListeners();
@@ -150,11 +158,11 @@ class MatchController extends ChangeNotifier implements MatchView {
       revealed = true;
       notifyListeners();
     });
-    _after(1900, () {
-      phaseIdx = 4; // EJECUCIÓN — se toma su tiempo para que se vean los efectos
+    _after(execStart, () {
+      phaseIdx = 4; // EJECUCIÓN — la mesa enfoca carta por carta a kExecStepMs
       notifyListeners();
     });
-    _after(5500, () {
+    _after(resultAt, () {
       phaseIdx = 5; // RESULTADO
 
       engine.applyResult();
