@@ -96,6 +96,39 @@ void drawIcon(Canvas canvas, double s) {
   canvas.drawRect(Rect.fromLTWH(0, s * .5 - s * .004, s, s * .008), Paint()..color = a(cyan, .12));
 }
 
+// Sólo el sígilo (sin fondo) centrado, escalado a [R], para el FOREGROUND del
+// icono adaptativo de Android (el fondo lo pone un color sólido). Trazos relativos
+// a R para que se vea igual a cualquier tamaño.
+void _sigilFg(Canvas canvas, Offset c, double R) {
+  canvas.drawPath(_hex(c, R), Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = R * .06
+    ..strokeJoin = StrokeJoin.round
+    ..color = cyan
+    ..maskFilter = MaskFilter.blur(BlurStyle.normal, R * .012));
+  canvas.drawPath(_hex(c, R * .58), Paint()
+    ..style = PaintingStyle.stroke
+    ..strokeWidth = R * .027
+    ..color = a(cyan, .7));
+  final verts = _hexVerts(c, R);
+  final spoke = Paint()
+    ..strokeWidth = R * .021
+    ..color = a(cyan, .55);
+  for (final v in verts) {
+    canvas.drawLine(c, v, spoke);
+  }
+  const triad = [cyan, red, green, cyan, purple, green];
+  for (var i = 0; i < 6; i++) {
+    _node(canvas, verts[i], R * .066, triad[i]);
+  }
+  _node(canvas, c, R * .15, cyan);
+}
+
+// Foreground adaptativo: lienzo transparente, sígilo dentro de la "zona segura".
+void drawIconForeground(Canvas canvas, double s) {
+  _sigilFg(canvas, Offset(s / 2, s / 2), s * .27);
+}
+
 Future<void> _save(String path, ui.Picture pic, int w, int h) async {
   final img = await pic.toImage(w, h);
   final data = await img.toByteData(format: ui.ImageByteFormat.png);
@@ -192,10 +225,12 @@ void main() {
     await t.runAsync(() async {
       await _save('store_assets/icon_512.png', _record((c) => drawIcon(c, 512)), 512, 512);
       await _save('store_assets/icon_1024.png', _record((c) => drawIcon(c, 1024)), 1024, 1024);
+      await _save('store_assets/icon_fg_1024.png', _record((c) => drawIconForeground(c, 1024)), 1024, 1024);
       await _save('store_assets/feature_1024x500.png', _record((c) => drawFeature(c, 1024, 500)), 1024, 500);
     });
 
     expect(File('store_assets/icon_512.png').existsSync(), isTrue);
+    expect(File('store_assets/icon_fg_1024.png').existsSync(), isTrue);
     expect(File('store_assets/feature_1024x500.png').existsSync(), isTrue);
   });
 }

@@ -16,8 +16,12 @@ import 'package:flutter/widgets.dart';
 
 /// Pistas de música (loops por contexto). Archivos en `assets/audio/`.
 enum Music {
-  menu('music_menu.mp3'),
-  combat('music_combat.mp3');
+  menu('music_menu.mp3'), // menú y fuera de partida
+  deckbuild('music_deckbuild.mp3'), // armando mazo
+  combat('music_combat.mp3'), // combate normal
+  combatDanger('music_combat_danger.mp3'), // combate con 1-2 de integridad (peligro)
+  victory('music_victory.mp3'), // pantalla de victoria
+  defeat('music_defeat.mp3'); // pantalla de derrota
 
   final String file;
   const Music(this.file);
@@ -28,29 +32,28 @@ enum Music {
 /// están cableados (colocar carta, compilar); el resto queda listo para el futuro
 /// (p. ej. cuando los reveals tengan un ORDEN y se puedan escuchar uno a uno).
 enum Sfx {
-  uiTap('sfx_ui_tap.mp3'),
-  cardPick('sfx_card_pick.mp3'),
-  cardPlace('sfx_card_place.mp3'),
-  cardReturn('sfx_card_return.mp3'),
-  compile('sfx_compile.mp3'),
+  // ── EN USO (cableados) ──
+  uiTap('sfx_ui_tap.mp3'), // presionar botón
+  cardZoom('sfx_card_zoom.mp3'), // abrir carta en zoom (clic)
+  cardPick('sfx_card_pick.mp3'), // empezar a arrastrar la carta
+  cardPlace('sfx_card_place.mp3'), // soltar la carta en el campo
+  compile('sfx_compile.mp3'), // COMPILAR
+  execFocus('sfx_exec_focus.mp3'), // highlight de SUBRUTINA en EJECUCIÓN (tick sutil)
+  // Highlight ÚNICO por TIPO de Rutina (identidad sonora del tipo) en EJECUCIÓN.
+  revealFirewall('sfx_reveal_firewall.mp3'), // CORTAFUEGOS (cian)
+  revealExploit('sfx_reveal_exploit.mp3'), // EXPLOIT (rojo)
+  revealSignal('sfx_reveal_signal.mp3'), // PULSO (verde)
+  revealNull('sfx_reveal_null.mp3'), // NULL (púrpura)
+  damageDealt('sfx_damage_dealt.mp3'), // rayo+impacto: el RIVAL recibe daño
+  damageTaken('sfx_damage_taken.mp3'), // rayo+impacto: TÚ recibes daño (distorsión)
+  lowWarning('sfx_low_warning.mp3'), // aviso 1 sola vez/partida al caer a 1 de integridad
+  enemyLose('sfx_enemy_lose_static.mp3'), // estática lejana: el enemigo pierde (se desconecta)
+  playerLose('sfx_player_lose_static.mp3'), // estática/distorsión fuerte: TÚ pierdes
 
-  // Revelado (para cuando el revelado sea ordenado y audible).
-  revealFirewall('sfx_reveal_firewall.mp3'),
-  revealExploit('sfx_reveal_exploit.mp3'),
-  revealSignal('sfx_reveal_signal.mp3'),
-  revealNull('sfx_reveal_null.mp3'),
-
-  // Resolución.
-  damageDealt('sfx_damage_dealt.mp3'),
-  damageTaken('sfx_damage_taken.mp3'),
-  blocked('sfx_blocked.mp3'), // BLINDAJE anula daño
+  // ── OPCIONALES / FUTUROS (definidos, aún sin cablear) ──
+  cardReturn('sfx_card_return.mp3'), // devolver carta a la mano
   acquire('sfx_acquire.mp3'), // robar cartas
-
-  roundWin('sfx_round_win.mp3'),
-  roundLose('sfx_round_lose.mp3'),
-  roundDraw('sfx_round_draw.mp3'),
-  matchWin('sfx_match_win.mp3'),
-  matchLose('sfx_match_lose.mp3');
+  blocked('sfx_blocked.mp3'); // BLINDAJE anula daño
 
   final String file;
   const Sfx(this.file);
@@ -147,6 +150,13 @@ class AudioService with WidgetsBindingObserver {
     if (!soundsEnabled) return;
     _playOnPool(sfx.file, volume * soundsVolume);
   }
+
+  /// Rutas de assets esperadas (para el panel de RUTAS en debug). Si el archivo no
+  /// existe todavía, el juego corre igual; este listado dice dónde dejarlo.
+  static List<({String label, String path})> musicAssets() =>
+      [for (final m in Music.values) (label: m.name, path: 'assets/audio/${m.file}')];
+  static List<({String label, String path})> sfxAssets() =>
+      [for (final s in Sfx.values) (label: s.name, path: 'assets/audio/${s.file}')];
 
   /// Activa/desactiva la música en vivo (para un futuro botón de mute).
   void setMusicEnabled(bool on) {

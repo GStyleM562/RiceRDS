@@ -26,6 +26,14 @@ class Deck {
       rut.values.every((n) => n <= kMaxRutCopies) &&
       sub.values.every((n) => n <= kMaxSubCopies);
 
+  /// Legalidad RELAJADA para el modo Inmersión (mazos pequeños mientras desbloqueas
+  /// cartas): basta con ≥[kAdvMinRut] Rutinas; las Subrutinas son opcionales. Respeta
+  /// los topes de copias.
+  bool get isLegalAdventure =>
+      rutCount >= kAdvMinRut &&
+      rut.values.every((n) => n <= kMaxRutCopies) &&
+      sub.values.every((n) => n <= kMaxSubCopies);
+
   /// Construye las 30 instancias del mazo.
   List<CardInstance> buildRutinas() => [
         for (final e in rut.entries)

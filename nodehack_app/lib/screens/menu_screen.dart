@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../audio/audio_service.dart';
 import '../theme/tokens.dart';
 import '../widgets/chrome.dart';
 import '../widgets/matrix_rain.dart';
@@ -9,6 +10,12 @@ class MenuScreen extends StatelessWidget {
   final VoidCallback onOnline;
   final VoidCallback onDeck;
   final VoidCallback onNucleo;
+  final VoidCallback? onTutorial;
+  final VoidCallback? onRules;
+  final VoidCallback? onAdventure;
+  final bool hasAdventureRun;
+  final VoidCallback? onCodex;
+  final VoidCallback? onDebugRoutes; // solo en debug: abre el panel de rutas de assets
   final String nucleoName;
   const MenuScreen({
     super.key,
@@ -16,6 +23,12 @@ class MenuScreen extends StatelessWidget {
     required this.onOnline,
     required this.onDeck,
     required this.onNucleo,
+    this.onTutorial,
+    this.onRules,
+    this.onAdventure,
+    this.hasAdventureRun = false,
+    this.onCodex,
+    this.onDebugRoutes,
     required this.nucleoName,
   });
 
@@ -30,6 +43,11 @@ class MenuScreen extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
+              Expanded(
+                child: SingleChildScrollView(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
               const SizedBox(height: NH.safe + 30),
               _boot(),
               const SizedBox(height: 14),
@@ -42,23 +60,40 @@ class MenuScreen extends StatelessWidget {
               Center(child: Text(':: PROGRAM_NULL', style: NH.mono(size: 13, color: NH.fw, spacing: 5.4))),
               const SizedBox(height: 12),
               Center(child: Text('Dos procesos. Una máquina muriendo.', style: NH.mono(size: 10, color: NH.dim, spacing: .6))),
-              const SizedBox(height: 34),
-              _MenuBtn(glyph: '⚔', label: 'PARTIDA vs CPU', sub: 'Duelo de resolución simultánea', onTap: onPlay, primary: true),
-              const SizedBox(height: 11),
+              const SizedBox(height: 14),
+              _HistoriaBtn(hasRun: hasAdventureRun, onEnter: onAdventure),
+              const SizedBox(height: 9),
+              _MenuBtn(glyph: '⚔', label: 'PARTIDA vs CPU', sub: 'Duelo de resolución simultánea', onTap: onPlay),
+              const SizedBox(height: 9),
               _MenuBtn(glyph: '⇄', label: 'JUGAR ONLINE', sub: '1v1 por código de sala', onTap: onOnline),
-              const SizedBox(height: 11),
+              const SizedBox(height: 9),
               _MenuBtn(glyph: '▤', label: 'MAZOS', sub: '10 Rutinas · 20 Subrutinas', onTap: onDeck),
-              const SizedBox(height: 11),
+              const SizedBox(height: 9),
               _MenuBtn(glyph: '◈', label: 'NÚCLEO', sub: 'Activo: $nucleoName', onTap: onNucleo),
-              const SizedBox(height: 11),
-              const _MenuBtn(glyph: '⌬', label: 'COLECCIÓN', sub: 'Bloqueado — próximamente', ghost: true),
-              const Spacer(),
+              const SizedBox(height: 9),
+              _MenuBtn(glyph: '❔', label: 'CÓMO JUGAR', sub: 'Tutorial básico y avanzado', onTap: onTutorial),
+              const SizedBox(height: 9),
+              _MenuBtn(glyph: '☰', label: 'REGLAS', sub: 'Referencia rápida de términos', onTap: onRules),
+              const SizedBox(height: 9),
+              _MenuBtn(glyph: '⌬', label: 'COLECCIÓN', sub: 'Cartas e historia descubiertas', onTap: onCodex),
+                      const SizedBox(height: 14),
+                    ],
+                  ),
+                ),
+              ),
               Padding(
                 padding: const EdgeInsets.only(bottom: NH.safe + 6),
                 child: Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
                     Text('v0.4 · build_null', style: NH.mono(size: 9, color: NH.dim2)),
+                    const Spacer(),
+                    if (onDebugRoutes != null) ...[
+                      GestureDetector(
+                        onTap: onDebugRoutes,
+                        child: Text('▤ RUTAS (debug)', style: NH.mono(size: 9, color: NH.fw, spacing: .5)),
+                      ),
+                      const Spacer(),
+                    ],
                     Row(children: [
                       Container(width: 6, height: 6, decoration: BoxDecoration(color: NH.pl, shape: BoxShape.circle, boxShadow: [BoxShadow(color: NH.pl, blurRadius: 6)])),
                       const SizedBox(width: 5),
@@ -113,29 +148,30 @@ class _BootLineState extends State<_BootLine> {
 class _MenuBtn extends StatelessWidget {
   final String glyph, label, sub;
   final VoidCallback? onTap;
-  final bool primary, ghost;
-  const _MenuBtn({required this.glyph, required this.label, required this.sub, this.onTap, this.primary = false, this.ghost = false});
+  const _MenuBtn({required this.glyph, required this.label, required this.sub, this.onTap});
 
   @override
   Widget build(BuildContext context) {
+    final disabled = onTap == null;
     return Opacity(
-      opacity: ghost ? .45 : 1,
+      opacity: disabled ? .45 : 1,
       child: GestureDetector(
-        onTap: ghost ? null : onTap,
+        onTap: disabled
+            ? null
+            : () {
+                AudioService.instance.playSfx(Sfx.uiTap);
+                onTap!();
+              },
         child: Container(
-          padding: const EdgeInsets.all(15),
+          padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 9),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(9),
-            color: primary ? null : NH.a(NH.panel, .7),
-            gradient: primary
-                ? LinearGradient(begin: Alignment.topCenter, end: Alignment.bottomCenter, colors: [NH.a(NH.fw, .12), NH.a(NH.panel, .7)])
-                : null,
-            border: Border.all(color: primary ? NH.fw : const Color(0xFF1C2533)),
-            boxShadow: primary ? [BoxShadow(color: NH.a(NH.fw, .16), blurRadius: 22)] : null,
+            color: NH.a(NH.panel, .7),
+            border: Border.all(color: const Color(0xFF1C2533)),
           ),
           child: Row(
             children: [
-              Container(width: 2, height: 34, color: primary ? NH.fw : Colors.transparent),
+              const SizedBox(width: 2),
               const SizedBox(width: 11),
               SizedBox(width: 26, child: Center(child: Text(glyph, style: TextStyle(fontSize: 20, color: NH.fw)))),
               const SizedBox(width: 13),
@@ -149,11 +185,115 @@ class _MenuBtn extends StatelessWidget {
                   ],
                 ),
               ),
-              Text(ghost ? '🔒' : '▸', style: NH.mono(size: 12, color: NH.dim)),
+              const Text('▸', style: TextStyle(fontSize: 12, color: NH.dim)),
             ],
           ),
         ),
       ),
+    );
+  }
+}
+
+/// Botón insignia de HISTORIA: al tocarlo, su texto se transforma con glitch a
+/// "NULL DIVE · iniciando inmersión…" y luego entra al modo.
+class _HistoriaBtn extends StatefulWidget {
+  final bool hasRun;
+  final VoidCallback? onEnter;
+  const _HistoriaBtn({required this.hasRun, required this.onEnter});
+
+  @override
+  State<_HistoriaBtn> createState() => _HistoriaBtnState();
+}
+
+class _HistoriaBtnState extends State<_HistoriaBtn> with SingleTickerProviderStateMixin {
+  bool _diving = false;
+  late final AnimationController _glitch; // se crea en initState (evita init perezosa en dispose)
+
+  @override
+  void initState() {
+    super.initState();
+    _glitch = AnimationController(vsync: this, duration: const Duration(milliseconds: 1300));
+  }
+
+  @override
+  void dispose() {
+    _glitch.dispose();
+    super.dispose();
+  }
+
+  void _go() {
+    if (_diving || widget.onEnter == null) return;
+    AudioService.instance.playSfx(Sfx.compile);
+    setState(() => _diving = true);
+    _glitch.forward(from: 0);
+    Future.delayed(const Duration(milliseconds: 1250), () {
+      if (mounted) widget.onEnter!();
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final label = _diving
+        ? 'NULL DIVE'
+        : (widget.hasRun ? 'CONTINUAR INMERSIÓN' : 'HISTORIA');
+    final sub = _diving
+        ? 'iniciando inmersión…'
+        : (widget.hasRun ? 'Retoma tu descenso' : 'Desciende. Desbloquea. Reescríbete.');
+    return GestureDetector(
+      onTap: _go,
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 15, vertical: 10),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(9),
+          gradient: LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [NH.a(NH.nl, .16), NH.a(NH.panel, .7)],
+          ),
+          border: Border.all(color: NH.nl),
+          boxShadow: [BoxShadow(color: NH.a(NH.nl, .2), blurRadius: 22)],
+        ),
+        child: Row(children: [
+          Container(width: 2, height: 34, color: NH.nl),
+          const SizedBox(width: 11),
+          SizedBox(width: 26, child: Center(child: Text('∅', style: NH.disp(size: 20, weight: FontWeight.w700, color: NH.nl)))),
+          const SizedBox(width: 13),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                _diving ? _GlitchLabel(text: label, anim: _glitch) : Text(label, style: NH.disp(size: 16, weight: FontWeight.w700, color: const Color(0xFFEAF1FB), spacing: 1.4)),
+                const SizedBox(height: 2),
+                Text(sub, style: NH.mono(size: 9, color: _diving ? NH.nl : NH.dim)),
+              ],
+            ),
+          ),
+          Text(_diving ? '▾' : '▸', style: TextStyle(fontSize: 12, color: NH.nl)),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Texto con aberración cromática (glitch) para la transición de inmersión.
+class _GlitchLabel extends StatelessWidget {
+  final String text;
+  final Animation<double> anim;
+  const _GlitchLabel({required this.text, required this.anim});
+
+  @override
+  Widget build(BuildContext context) {
+    final style = NH.disp(size: 16, weight: FontWeight.w700, color: const Color(0xFFEAF1FB), spacing: 1.4);
+    return AnimatedBuilder(
+      animation: anim,
+      builder: (_, _) {
+        final dx = (anim.value * 30) % 4 - 2;
+        return Stack(children: [
+          Transform.translate(offset: Offset(-dx, 0), child: Text(text, style: style.copyWith(color: NH.a(NH.fw, .6)))),
+          Transform.translate(offset: Offset(dx, 0), child: Text(text, style: style.copyWith(color: NH.a(NH.xp, .6)))),
+          Text(text, style: style),
+        ]);
+      },
     );
   }
 }

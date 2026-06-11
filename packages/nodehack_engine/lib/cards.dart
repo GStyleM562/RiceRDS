@@ -107,8 +107,15 @@ final Map<String, RutinaDef> kRutById = {for (final r in kRutinas) r.id: r};
 final Map<String, SubDef> kSubById = {for (final s in kSubrutinas) s.id: s};
 final Map<String, NucleoDef> kNucById = {for (final n in kNucleos) n.id: n};
 
+/// Todas las cartas del catálogo actual (Rutinas + Subrutinas). Son las "base"
+/// (gratuitas) del multijugador; futuras cartas se añadirán bloqueadas.
+final Set<String> kAllCardIds = {...kRutById.keys, ...kSubById.keys};
+
 /// Límites de construcción de mazo.
 const int kRutTarget = 10;
 const int kSubTarget = 20;
 const int kMaxRutCopies = 3;
 const int kMaxSubCopies = 5;
+
+/// Mínimo de Rutinas para un mazo del modo Inmersión (legalidad relajada).
+const int kAdvMinRut = 3;

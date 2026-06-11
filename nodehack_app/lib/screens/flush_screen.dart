@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import 'package:nodehack_engine/resolve.dart';
 
+import '../audio/audio_service.dart';
 import '../theme/tokens.dart';
 import '../widgets/chrome.dart';
 
@@ -42,11 +43,15 @@ class _FlushScreenState extends State<FlushScreen> with SingleTickerProviderStat
       vsync: this,
       duration: Duration(milliseconds: _win ? 1100 : 2000),
     )..forward();
+    // Música de la pantalla + estática/distorsión fuerte si TÚ pierdes.
+    AudioService.instance.playMusic(_win ? Music.victory : Music.defeat);
+    if (!_win) AudioService.instance.playSfx(Sfx.playerLose);
   }
 
   @override
   void dispose() {
     _intro.dispose();
+    AudioService.instance.playMusic(Music.menu); // al salir del resultado, vuelve la del menú
     super.dispose();
   }
 

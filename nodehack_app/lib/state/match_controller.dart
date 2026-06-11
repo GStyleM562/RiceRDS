@@ -38,15 +38,22 @@ class MatchController extends ChangeNotifier implements MatchView {
   @override
   bool showAcquire = false;
 
+  /// Nombre del rival (procesos temáticos del modo Inmersión, o 'proc_0x4F' por defecto).
+  final String _oppName;
+
   MatchController({
     required Deck deckYou,
     required this.onFlush,
+    Deck? deckOpp,
+    NucleoDef? nucOpp,
+    String oppName = 'proc_0x4F',
     int? seed,
-  }) : engine = MatchEngine(
+  })  : _oppName = oppName,
+        engine = MatchEngine(
           nucYou: kNucById[deckYou.nucleoId] ?? kNucleos.first,
-          nucOpp: kNucleos[Random(seed).nextInt(kNucleos.length)],
+          nucOpp: nucOpp ?? kNucleos[Random(seed).nextInt(kNucleos.length)],
           deckYou: deckYou,
-          deckOpp: Deck.starter(),
+          deckOpp: deckOpp ?? Deck.starter(),
           rng: seed != null ? Random(seed) : Random(),
         );
 
@@ -99,7 +106,7 @@ class MatchController extends ChangeNotifier implements MatchView {
   @override
   String? get outcome => engine.outcome;
   @override
-  String get oppName => 'proc_0x4F';
+  String get oppName => _oppName;
 
   @override
   void placeActive(CardInstance c) {

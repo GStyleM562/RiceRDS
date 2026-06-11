@@ -24,7 +24,9 @@ class MatchScreen extends StatefulWidget {
   final MatchView ctrl;
   final VoidCallback onExit;
   final void Function(CardInstance) onInspect;
-  const MatchScreen({super.key, required this.ctrl, required this.onExit, required this.onInspect});
+  /// Claves de "spots" para el tutorial (señalar RAM/CICLOS/espacios…). null = partida normal.
+  final Map<String, GlobalKey>? spotKeys;
+  const MatchScreen({super.key, required this.ctrl, required this.onExit, required this.onInspect, this.spotKeys});
 
   @override
   State<MatchScreen> createState() => _MatchScreenState();
@@ -38,6 +40,7 @@ class _MatchScreenState extends State<MatchScreen> {
   bool _dragActive = false; // el arrastre empieza tras mover el dedo (slop)
   String? _hover;
   bool _confirmExit = false; // overlay "¿RENDIRSE?"
+  bool _warnedLow = false; // aviso de "1 de vida" ya sonó esta partida
 
   // ---- Secuenciador de EJECUCIÓN (un solo reloj: enfoca carta → muestra su log) ----
   String _prevPhase = '';
@@ -49,12 +52,35 @@ class _MatchScreenState extends State<MatchScreen> {
   MatchView get c => widget.ctrl;
   RenderBox? get _rootBox => _rootKey.currentContext?.findRenderObject() as RenderBox?;
 
+  // Envuelve una zona con su clave de "spot" (solo en tutorial) para que el overlay
+  // pueda localizarla y señalarla. En partida normal devuelve el hijo sin tocar.
+  Widget _spot(String name, Widget child) {
+    final k = widget.spotKeys?[name];
+    return k == null ? child : KeyedSubtree(key: k, child: child);
+  }
+
   @override
   void initState() {
     super.initState();
-    AudioService.instance.playMusic(Music.combat); // música de combate
+    _updateCombatMusic(); // combate normal o "peligro" según integridad
     _prevPhase = c.phase.id;
     c.addListener(_onCtrl);
+  }
+
+  // Combate normal vs "peligro" (1-2 de integridad). Idempotente: si te curas y
+  // subes de 2, vuelve a la normal; si bajas otra vez, vuelve a peligro.
+  void _updateCombatMusic() {
+    if (c.gameOver) return; // el flush pondrá victoria/derrota
+    AudioService.instance.playMusic(c.integrityYou <= 2 ? Music.combatDanger : Music.combat);
+  }
+
+  // Aviso 1 SOLA vez por partida cuando caes a 1 de integridad (sigues vivo).
+  void _maybeLowWarning() {
+    if (_warnedLow || c.gameOver) return;
+    if (c.integrityYou == 1) {
+      _warnedLow = true;
+      AudioService.instance.playSfx(Sfx.lowWarning);
+    }
   }
 
   @override
@@ -70,6 +96,18 @@ class _MatchScreenState extends State<MatchScreen> {
     final p = c.phase.id;
     if (p == _prevPhase) return;
     _prevPhase = p;
+    _updateCombatMusic();
+    _maybeLowWarning();
+    if (p == 'resultado') {
+      // Rayo + impacto (quién recibe el daño) y estática si el enemigo se desconecta.
+      final hit = c.hit;
+      if (hit != null) {
+        AudioService.instance.playSfx(hit.side == 'you' ? Sfx.damageTaken : Sfx.damageDealt);
+      }
+      if (c.gameOver && c.outcome == 'win') {
+        AudioService.instance.playSfx(Sfx.enemyLose);
+      }
+    }
     if (p == 'ejecucion') {
       _startExecSequence();
     } else {
@@ -98,6 +136,7 @@ class _MatchScreenState extends State<MatchScreen> {
 
     _execTimer?.cancel();
     setState(() => _execStep = 0);
+    _focusTick();
     final maxStep = ids.length; // último paso = líneas de resultado/sistema
     _execTimer = Timer.periodic(Duration(milliseconds: kExecStepMs), (t) {
       if (!mounted) {
@@ -109,8 +148,30 @@ class _MatchScreenState extends State<MatchScreen> {
         return;
       }
       setState(() => _execStep++);
+      _focusTick();
     });
   }
+
+  // SFX al recibir el foco en EJECUCIÓN: las RUTINAS suenan ÚNICO por tipo (cian/
+  // rojo/verde/null → identidad sonora); las Subrutinas, un tick sutil compartido.
+  void _focusTick() {
+    final id = _focusedExecId;
+    if (id == null) return; // paso final (resultado/sistema)
+    if (id == 'you-active') {
+      AudioService.instance.playSfx(_typeSfx(c.active?.type), volume: .8);
+    } else if (id == 'opp-active') {
+      AudioService.instance.playSfx(_typeSfx(c.oppPlay?.rutina.type), volume: .8);
+    } else {
+      AudioService.instance.playSfx(Sfx.execFocus, volume: .55);
+    }
+  }
+
+  Sfx _typeSfx(CType? t) => switch (t) {
+        CType.firewall => Sfx.revealFirewall,
+        CType.exploit => Sfx.revealExploit,
+        CType.signal => Sfx.revealSignal,
+        _ => Sfx.revealNull,
+      };
 
   // Reparte las líneas del log en pasos: una "ranura" por carta (en el orden de
   // [ids]) + una final con las líneas de resultado/sistema. Mapea por las marcas
@@ -187,6 +248,7 @@ class _MatchScreenState extends State<MatchScreen> {
     if (!_dragActive) {
       if ((local - d.start).distance <= 8) return;
       _dragActive = true; // empieza el arrastre real
+      AudioService.instance.playSfx(Sfx.cardPick); // carta levantada
     }
     setState(() {
       d.pos = local;
@@ -253,7 +315,7 @@ class _MatchScreenState extends State<MatchScreen> {
                   (c.gameOver && c.outcome == 'win')
                       ? _DisconnectFx(oppName: c.oppName, child: _oppZone())
                       : HitEffects(active: c.hit?.side == 'opp', child: _oppZone()),
-                  _center(),
+                  _spot('center', _center()),
                   const Spacer(),
                   HitEffects(active: c.hit?.side == 'you', child: _youZone()),
                 ]),
@@ -348,11 +410,11 @@ class _MatchScreenState extends State<MatchScreen> {
           Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 0), 'opp-sub0', NH.xp)),
             const SizedBox(width: 10),
-            _morphOverlay(
+            _spot('oppCard', _morphOverlay(
               _slot(width: 72, height: 100, filled: opp != null, child: opp != null
                   ? (c.revealed ? _execWrap(_oppCard(opp.rutina, 72), 'opp-active', NH.xp) : const CardBackView(width: 72, seed: 42))
                   : null),
-              c.result?.oppType, opp?.rutina.type),
+              c.result?.oppType, opp?.rutina.type)),
             const SizedBox(width: 10),
             _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 1), 'opp-sub1', NH.xp)),
           ]),
@@ -387,7 +449,7 @@ class _MatchScreenState extends State<MatchScreen> {
           const SizedBox(height: 3),
           Text(c.phase.hint, textAlign: TextAlign.center, style: NH.mono(size: 8.5, color: NH.dim)),
           const SizedBox(height: 6),
-          _cycleLegend(),
+          _spot('legend', _cycleLegend()),
         ],
         if (showResult) _resultBanner(r),
         if (showResult) _explanation(r),
@@ -593,25 +655,25 @@ class _MatchScreenState extends State<MatchScreen> {
       padding: const EdgeInsets.fromLTRB(12, 0, 12, NH.safe + 2),
       child: Stack(children: [
         Column(mainAxisSize: MainAxisSize.min, children: [
-          Row(mainAxisAlignment: MainAxisAlignment.center, children: [
+          _spot('slots', Row(mainAxisAlignment: MainAxisAlignment.center, children: [
             _dropSlot('sub0', 52, 73, e.subs[0]),
             const SizedBox(width: 10),
             _morphOverlay(_dropSlot('active', 72, 100, e.active, glow: true), c.result?.youType, e.active?.type),
             const SizedBox(width: 10),
             _dropSlot('sub1', 52, 73, e.subs[1]),
-          ]),
+          ])),
           const SizedBox(height: 5),
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-            _ramMeter(),
-            Row(children: [
+            _spot('ram', _ramMeter()),
+            _spot('integrity', Row(children: [
               Text(e.nucYou.name, style: NH.mono(size: 9, color: Color(e.nucYou.color), spacing: 1)),
               const SizedBox(width: 8),
               _pips(e.integrityYou, e.nucYou.integrity, NH.pl, brokeForSide: 'you'),
-            ]),
+            ])),
           ]),
           _deckBar(),
-          _hand(),
-          _cta(),
+          _spot('hand', _hand()),
+          _spot('cta', _cta()),
         ]),
         if (c.hit?.side == 'you') _floatingDmg(),
       ]),

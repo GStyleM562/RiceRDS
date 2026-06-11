@@ -19,8 +19,13 @@ class NucleoScreen extends StatefulWidget {
 
 class _NucleoScreenState extends State<NucleoScreen> with SingleTickerProviderStateMixin {
   late NucleoDef sel = widget.current;
-  late final AnimationController _ring =
-      AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat();
+  late final AnimationController _ring; // se crea en initState (evita init perezosa en dispose)
+
+  @override
+  void initState() {
+    super.initState();
+    _ring = AnimationController(vsync: this, duration: const Duration(seconds: 14))..repeat();
+  }
 
   @override
   void dispose() {

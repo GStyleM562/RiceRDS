@@ -4,6 +4,7 @@ import 'package:nodehack_engine/card_instance.dart';
 import 'package:nodehack_engine/cards.dart';
 import 'package:nodehack_engine/deck.dart';
 import 'package:nodehack_engine/types.dart';
+import '../audio/audio_service.dart';
 import '../theme/tokens.dart';
 import '../widgets/card_view.dart';
 import '../widgets/chrome.dart';
@@ -26,8 +27,15 @@ class _DeckBuilderScreenState extends State<DeckBuilderScreen> {
   late final TextEditingController _name = TextEditingController(text: d.name);
 
   @override
+  void initState() {
+    super.initState();
+    AudioService.instance.playMusic(Music.deckbuild); // música de "armando mazo"
+  }
+
+  @override
   void dispose() {
     _name.dispose();
+    AudioService.instance.playMusic(Music.menu); // al salir, vuelve la del menú
     super.dispose();
   }
 

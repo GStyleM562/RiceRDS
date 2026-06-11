@@ -21,6 +21,9 @@ class AppState extends ChangeNotifier {
   static const _kName = 'nh_name';
   static const _kDevice = 'nh_device';
   static const _kServer = 'nh_server';
+  static const _kIntro = 'nh_intro';
+  static const _kTutBasic = 'nh_tut_basic';
+  static const _kTutAdv = 'nh_tut_adv';
 
   NucleoDef nucleo = kNucleos.first;
   List<Deck> decks = [];
@@ -31,8 +34,18 @@ class AppState extends ChangeNotifier {
   String deviceId = '';
   String serverUrl = kDefaultServerUrl;
 
+  // Onboarding (primera vez).
+  bool introSeen = false;
+  bool tutorialBasicDone = false;
+  bool tutorialAdvancedDone = false;
+
   Deck get currentDeck =>
       decks.isEmpty ? Deck.starter() : decks[activeDeck.clamp(0, decks.length - 1)];
+
+  /// ¿La carta está desbloqueada para el MULTIJUGADOR? (provisión a futuro). Hoy
+  /// todas las cartas actuales son "base"/gratuitas; cartas nuevas se desbloquearán
+  /// jugando X partidas o viendo anuncios. La colección de Historia es aparte.
+  bool isMultiplayerUnlocked(String cardId) => kAllCardIds.contains(cardId);
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
@@ -52,7 +65,32 @@ class AppState extends ChangeNotifier {
     }
     playerName = p.getString(_kName) ?? 'OPERADOR-${deviceId.substring(0, 4).toUpperCase()}';
     serverUrl = p.getString(_kServer) ?? kDefaultServerUrl;
+
+    introSeen = p.getBool(_kIntro) ?? false;
+    tutorialBasicDone = p.getBool(_kTutBasic) ?? false;
+    tutorialAdvancedDone = p.getBool(_kTutAdv) ?? false;
     notifyListeners();
+  }
+
+  void markIntroSeen() {
+    if (introSeen) return;
+    introSeen = true;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setBool(_kIntro, true));
+  }
+
+  void markTutorialBasicDone() {
+    if (tutorialBasicDone) return;
+    tutorialBasicDone = true;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setBool(_kTutBasic, true));
+  }
+
+  void markTutorialAdvancedDone() {
+    if (tutorialAdvancedDone) return;
+    tutorialAdvancedDone = true;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setBool(_kTutAdv, true));
   }
 
   static String _genDeviceId() {
