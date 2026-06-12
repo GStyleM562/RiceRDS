@@ -13,7 +13,7 @@ import 'package:nodehack_engine/cards.dart';
 import 'adventure_data.dart';
 import 'adventure_state.dart';
 
-enum AdvStep { path, loreIntro, combat, reward, shop, fragment, bossIntro, sectorEnd }
+enum AdvStep { path, loreIntro, combat, reward, shop, fragment, event, bossIntro, ending }
 
 /// Qué hay detrás de cada carta-camino (críptico hasta elegir).
 enum PathKind { combat, elite, shop, fragment }
@@ -38,6 +38,9 @@ class AdventureController extends ChangeNotifier {
   EnemyProc? enemy;
   bool isBoss = false;
   String preLore = '';
+  int combatYouBonus = 0; // modificador de integridad para TI este combate (curse)
+  int combatOppBonus = 0; // modificador de integridad para el rival (jefe blindado)
+  String modLabel = ''; // telegrafía del modificador (vacío = ninguno)
 
   // Draft de recompensa.
   List<String> rewardChoices = const [];
@@ -50,24 +53,33 @@ class AdventureController extends ChangeNotifier {
   // Tienda.
   List<ShopOffer> shopOffers = const [];
 
-  int _lastLoreBattles = -1;
+  // Mini-evento (monólogo del rol) y final.
+  String eventText = '';
+  String endingId = '';
 
   AdventureController(this.st, {int? seed}) : _rng = seed != null ? Random(seed) : Random() {
     _decideNext();
   }
 
-  // ── Decisión del siguiente nodo (por contador) ──
+  // ── Decisión del siguiente nodo (run-points / jefes / mini-eventos) ──
   void _decideNext() {
     enemy = null;
     isBoss = false;
-    if (st.sinceBoss >= kBattlesPerSector) {
+    // 1) Jefe en run-points 10/20/30/40/50 (si no hay cooldown).
+    if (st.bossCooldown == 0 &&
+        st.bossesDone < kBossCount &&
+        st.runPoints >= (st.bossesDone + 1) * kCheckpointStep) {
       _toBossIntro();
-    } else if (st.battles > 0 && st.battles % kLoreEvery == 0 && st.battles != _lastLoreBattles) {
-      _lastLoreBattles = st.battles;
-      _toFragment();
-    } else {
-      _toPath();
+      return;
     }
+    // 2) Mini-evento: tu rol "habla" en 5/10/.../45 (1 vez por umbral).
+    final ev = st.pendingEvent();
+    if (ev != null) {
+      _toEvent(ev);
+      return;
+    }
+    // 3) Elección de 3 caminos.
+    _toPath();
   }
 
   void _toPath() {
@@ -81,8 +93,20 @@ class AdventureController extends ChangeNotifier {
     if (r < 50) return PathKind.combat;
     if (r < 70) return PathKind.shop;
     if (r < 90) return PathKind.fragment;
-    return PathKind.elite;
+    return _tier >= 1 ? PathKind.elite : PathKind.combat; // sin élites tan temprano
   }
+
+  // ── Mini-evento (monólogo del rol) ──
+  void _toEvent(int t) {
+    final idx = kMiniEventPoints.indexOf(t).clamp(0, st.nature.monologues.length - 1);
+    eventText = st.nature.monologues[idx];
+    st.markEventFired(t);
+    step = AdvStep.event;
+    notifyListeners();
+  }
+
+  /// Continúa tras leer el monólogo.
+  void nextFromEvent() => _decideNext();
 
   /// El jugador elige una de las 3 cartas-camino.
   void choosePath(int i) {
@@ -99,20 +123,55 @@ class AdventureController extends ChangeNotifier {
   }
 
   // ── Combate ──
+  void _clearMods() {
+    combatYouBonus = 0;
+    combatOppBonus = 0;
+    modLabel = '';
+  }
+
+  int get _tier => enemyTier(subsUnlocked: st.subsUnlocked, bossesDone: st.bossesDone);
+
   void _toCombatIntro({required bool elite}) {
-    final pool = kEnemies.where((e) => e.elite == elite).toList();
+    final tier = _tier;
+    final pool = elite ? eliteEnemies(tier) : combatEnemies(tier);
     enemy = pool[_rng.nextInt(pool.length)];
     isBoss = false;
     preLore = kPreCombatLore[_rng.nextInt(kPreCombatLore.length)];
+    _clearMods();
+    // Modificadores SOLO desde tier ≥1 (al inicio nada los hace más difícil).
+    if (tier >= 1) {
+      if (elite) {
+        combatOppBonus = 1; // los daemon élite aguantan más
+        modLabel = 'DAEMON REFORZADO · el rival empieza con +1 de integridad';
+      } else if (_rng.nextInt(100) < 22) {
+        combatYouBonus = -1; // proceso infectado: te debilita
+        modLabel = 'PROCESO INFECTADO · empiezas con −1 de integridad';
+        st.addCorruption(kCorruptInfected); // los caminos infectados corrompen
+      }
+    }
+    if (st.corruption >= kCorruptEnemyBuffAt) {
+      combatOppBonus += 1; // la corrupción alta hace que el vacío empuje
+      modLabel = modLabel.isEmpty ? 'CORRUPCIÓN ALTA · el rival empieza con +1 de integridad' : '$modLabel  + CORRUPCIÓN';
+    }
     step = AdvStep.loreIntro;
     notifyListeners();
   }
 
   void _toBossIntro() {
-    enemy = kBoss;
+    final tier = _tier;
+    enemy = bossForTier(tier);
     isBoss = true;
-    preLore = kBoss.flavor;
+    preLore = enemy!.flavor;
+    _clearMods();
+    combatOppBonus = (tier >= 2 ? 2 : 1) + (st.corruption >= kCorruptEnemyBuffAt ? 1 : 0);
+    modLabel = 'KERNEL BLINDADO · empieza con +$combatOppBonus de integridad';
     step = AdvStep.bossIntro;
+    notifyListeners();
+  }
+
+  void _toEnding() {
+    endingId = st.evaluateEnding();
+    step = AdvStep.ending;
     notifyListeners();
   }
 
@@ -126,9 +185,8 @@ class AdventureController extends ChangeNotifier {
   void onCombatEnd(bool win) {
     if (isBoss) {
       st.recordBoss(win: win);
-      if (win) {
-        step = AdvStep.sectorEnd;
-        notifyListeners();
+      if (win && st.bossesDone >= kBossCount) {
+        _toEnding(); // venciste al 5º jefe → fin de la run
       } else {
         _decideNext();
       }
@@ -261,8 +319,4 @@ class AdventureController extends ChangeNotifier {
 
   /// Salir de la tienda continúa la run.
   void leaveShop() => _decideNext();
-
-  // ── Fin de tramo ──
-  /// Tras ver el fin de tramo, sigue (más sectores en el futuro).
-  void continueAfterSector() => _decideNext();
 }

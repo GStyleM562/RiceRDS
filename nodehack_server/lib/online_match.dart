@@ -33,8 +33,9 @@ class PlayerState {
   // Pasivas / efectos diferidos.
   bool sentinelUsed = false; // BLINDAJE (una vez por partida)
   bool wraithNext = false; // INYECCIÓN → +1 sub próxima ronda
-  int ramPen = 0; // ZERO-DAY → −1 RAM próxima ronda
+  int ramPen = 0; // ZERO-DAY/EMP-BURST/IRON-WALL → −1 RAM próxima ronda
   bool empAgainst = false; // EMP-BURST rival → −1 sub próxima ronda
+  bool shuffleNext = false; // DESFRAG/FORMATEO → rebaraja la mano próxima ronda
 
   PlayerState(this.nuc, this.deck, this.piles) : integrity = nuc.integrity;
 }
@@ -202,6 +203,34 @@ class OnlineMatch {
       _damage(0, r.damage); // p[0] recibe
     }
 
+    // Subrutinas anuladas por SIGKILL del rival no aplican efectos post-resolución.
+    final p0Annulled = p[1].playSubs.any((s) => s.sub?.id == 'sigkill');
+    final p1Annulled = p[0].playSubs.any((s) => s.sub?.id == 'sigkill');
+    bool p0(String id) => !p0Annulled && p[0].playSubs.any((s) => s.sub?.id == id);
+    bool p1(String id) => !p1Annulled && p[1].playSubs.any((s) => s.sub?.id == id);
+    void heal(int i, int d) => p[i].integrity = (p[i].integrity + d).clamp(0, p[i].nuc.integrity);
+    final p0Won = r.winner == Winner.you, p1Won = r.winner == Winner.opp;
+
+    // PARCHE / PARCHE.Ω — cura al ganar; PARCHE además daña 1 extra al perder.
+    if (p0Won && (p0('patch') || p0('patch_pro'))) {
+      heal(0, 1);
+    } else if (p1Won && p0('patch')) {
+      heal(0, -1);
+    }
+    if (p1Won && (p1('patch') || p1('patch_pro'))) {
+      heal(1, 1);
+    } else if (p0Won && p1('patch')) {
+      heal(1, -1);
+    }
+
+    // DESFRAG (al perdedor) / FORMATEO (solo si pierde el rival) → rebaraja la mano.
+    if (p0('shuffle_loser') || p1('shuffle_loser')) {
+      if (p1Won) p[0].shuffleNext = true; // p[0] perdió
+      if (p0Won) p[1].shuffleNext = true; // p[1] perdió
+    }
+    if (p0('shuffle_opp') && p0Won) p[1].shuffleNext = true;
+    if (p1('shuffle_opp') && p1Won) p[0].shuffleNext = true;
+
     // INYECCIÓN (WRAITH): ganar con EXPLOIT → +1 sub la próxima ronda.
     if (r.winner == Winner.you &&
         p[0].nuc.passiveId == PassiveId.inyeccion &&
@@ -216,9 +245,10 @@ class OnlineMatch {
     // EMP-BURST: el ganador con pl_emp hace que el rival robe 1 menos.
     if (r.winner == Winner.you && p[0].active!.rut?.id == 'pl_emp') p[1].empAgainst = true;
     if (r.winner == Winner.opp && p[1].active!.rut?.id == 'pl_emp') p[0].empAgainst = true;
-    // ZERO-DAY: −1 RAM la próxima ronda para quien lo jugó.
-    p[0].ramPen = p[0].active!.rut?.id == 'xp_zero' ? 1 : 0;
-    p[1].ramPen = p[1].active!.rut?.id == 'xp_zero' ? 1 : 0;
+    // Variantes con coste: −1 RAM la próxima ronda (ZERO-DAY, EMP-BURST, IRON-WALL).
+    const ramPenRut = {'xp_zero', 'pl_emp', 'fw_iron'};
+    p[0].ramPen = ramPenRut.contains(p[0].active!.rut?.id) ? 1 : 0;
+    p[1].ramPen = ramPenRut.contains(p[1].active!.rut?.id) ? 1 : 0;
 
     if (p[0].integrity <= 0 || p[1].integrity <= 0) {
       gameOver = true;
@@ -265,6 +295,14 @@ class OnlineMatch {
       if (p[i].empAgainst) {
         nSub -= 1;
         p[i].empAgainst = false;
+      }
+      // DESFRAG/FORMATEO: descarta la mano entera y roba una nueva.
+      if (p[i].shuffleNext) {
+        for (final c in List.of(p[i].hand)) {
+          p[i].piles.discard(c);
+        }
+        p[i].hand.clear();
+        p[i].shuffleNext = false;
       }
       _acquire(i, 2, nSub.clamp(0, 4));
     }

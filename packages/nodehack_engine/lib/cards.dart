@@ -72,11 +72,11 @@ class RutinaDef {
 
 const List<RutinaDef> kRutinas = [
   RutinaDef('fw_base', 'CORTAFUEGOS', CType.firewall, 5, Rareza.c, 'firewall.proc', 'Rutina base. Vence a EXPLOIT.'),
-  RutinaDef('fw_iron', 'IRON-WALL', CType.firewall, 7, Rareza.r, 'ironwall.sys', 'Si ganas, no recibes Subrutinas de daño esta ronda.'),
+  RutinaDef('fw_iron', 'IRON-WALL', CType.firewall, 7, Rareza.r, 'ironwall.sys', 'Inmune a THROTTLE (no le bajan los Ciclos). Coste: −1 RAM la próxima ronda.'),
   RutinaDef('xp_base', 'EXPLOIT', CType.exploit, 5, Rareza.c, 'exploit.bin', 'Rutina base. Vence a PULSO.'),
   RutinaDef('xp_zero', 'ZERO-DAY', CType.exploit, 9, Rareza.r, '0day.exploit', 'Gana los espejos de EXPLOIT por Ciclos. Coste: −1 RAM la próxima ronda.'),
   RutinaDef('pl_base', 'PULSO', CType.signal, 5, Rareza.c, 'pulse.sig', 'Rutina base. Vence a CORTAFUEGOS.'),
-  RutinaDef('pl_emp', 'EMP-BURST', CType.signal, 8, Rareza.r, 'emp.burst', 'Si ganas, el rival roba 1 carta menos la próxima ronda.'),
+  RutinaDef('pl_emp', 'EMP-BURST', CType.signal, 8, Rareza.r, 'emp.burst', 'Si ganas, el rival roba 1 Subrutina menos. Coste: −1 RAM la próxima ronda.'),
   RutinaDef('null_sh', 'NULL-SHARD', CType.nul, 6, Rareza.n, 'shard.null', 'Comodín. Declaras su tipo al programar. Inmune a Overclock/Throttle.'),
 ];
 
@@ -101,6 +101,13 @@ const List<SubDef> kSubrutinas = [
   SubDef('shift_back', '◂ RECALIBRAR', 2, Rareza.r, 'phase.rev', 'Mueve TU Rutina al tipo ANTERIOR del ciclo (mantiene su nivel básica/avanzada).'),
   SubDef('shift_opp_back', '◂ SABOTAJE', 2, Rareza.r, 'phase.sab', 'Mueve la Rutina del RIVAL al tipo ANTERIOR del ciclo (mantiene su nivel básica/avanzada).'),
   SubDef('shift_you_fwd', 'AVANCE ▸', 2, Rareza.r, 'phase.adv', 'Mueve TU Rutina al tipo SIGUIENTE del ciclo (mantiene su nivel básica/avanzada).'),
+  // — Cartas nuevas —
+  SubDef('patch', 'PARCHE', 2, Rareza.r, 'patch.sys', 'Si GANAS la ronda, +1 de integridad. Si PIERDES, pierdes 1 extra.'),
+  SubDef('patch_pro', 'PARCHE.Ω', 4, Rareza.e, 'patch.omega', 'Si GANAS la ronda, +1 de integridad. Sin riesgo (pero caro).'),
+  SubDef('invert_tri', 'INVERSIÓN', 2, Rareza.e, 'tri.flip', 'INVIERTE el triángulo esta ronda: el tipo que perdería, vence.'),
+  SubDef('invert_cyc', 'PARADOJA', 2, Rareza.e, 'cyc.flip', 'Esta ronda, en un ESPEJO gana quien tenga MENOS Ciclos.'),
+  SubDef('shuffle_loser', 'DESFRAG', 2, Rareza.r, 'frag.any', 'Quien PIERDA la ronda rebaraja su mano (la descarta y roba de nuevo).'),
+  SubDef('shuffle_opp', 'FORMATEO', 3, Rareza.e, 'fmt.rival', 'Si el RIVAL pierde la ronda, rebaraja su mano. (A ti no te afecta.)'),
 ];
 
 final Map<String, RutinaDef> kRutById = {for (final r in kRutinas) r.id: r};
@@ -110,6 +117,17 @@ final Map<String, NucleoDef> kNucById = {for (final n in kNucleos) n.id: n};
 /// Todas las cartas del catálogo actual (Rutinas + Subrutinas). Son las "base"
 /// (gratuitas) del multijugador; futuras cartas se añadirán bloqueadas.
 final Set<String> kAllCardIds = {...kRutById.keys, ...kSubById.keys};
+
+/// Cartas que se DESBLOQUEAN para multijugador jugando partidas (escalonado, para
+/// que "siempre haya algo cerca"). Las no listadas son base (desbloqueadas).
+const Map<String, int> kCardUnlockGames = {
+  'patch': 5,
+  'invert_tri': 10,
+  'patch_pro': 15,
+  'invert_cyc': 20,
+  'shuffle_loser': 25,
+  'shuffle_opp': 30,
+};
 
 /// Límites de construcción de mazo.
 const int kRutTarget = 10;

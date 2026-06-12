@@ -348,4 +348,80 @@ void main() {
       }
     });
   });
+
+  group('cartas nuevas + rebalance de variantes', () {
+    MatchEngine _engine(String nucYouId, String nucOppId, int seed) => MatchEngine(
+          nucYou: kNucById[nucYouId]!,
+          nucOpp: kNucById[nucOppId]!,
+          deckYou: Deck.starter(),
+          deckOpp: Deck.starter(),
+          rng: Random(seed),
+        );
+
+    test('INVERSIÓN voltea el triángulo', () {
+      expect(resolve(_p(_rut('fw_base')), _p(_rut('xp_base'))).winner, Winner.you);
+      final inv = resolve(_p(_rut('fw_base'), [_sub('invert_tri')]), _p(_rut('xp_base')));
+      expect(inv.winner, Winner.opp); // CORTAFUEGOS ya no vence a EXPLOIT esta ronda
+    });
+
+    test('PARADOJA: en espejo gana MENOS Ciclos', () {
+      expect(resolve(_p(_rut('fw_base'), [_sub('overclock')]), _p(_rut('fw_base'))).winner, Winner.you);
+      final inv = resolve(_p(_rut('fw_base'), [_sub('overclock'), _sub('invert_cyc')]), _p(_rut('fw_base')));
+      expect(inv.winner, Winner.opp); // 9 vs 5 → con PARADOJA gana el 5
+    });
+
+    test('IRON-WALL es inmune a THROTTLE', () {
+      final r = resolve(_p(_rut('fw_iron')), _p(_rut('fw_base'), [_sub('throttle')]));
+      expect(r.youCiclos, 7); // THROTTLE ignorado
+      expect(r.winner, Winner.you); // espejo firewall 7 vs 5
+    });
+
+    test('PARCHE cura +1 al ganar', () {
+      final e = _engine('sentinel', 'wraith', 1);
+      e.integrityYou = 2;
+      e.active = _rut('fw_base');
+      e.subs[0] = _sub('patch');
+      e.oppPlay = _p(_rut('xp_base'));
+      e.result = resolve(Play(e.active!, [e.subs[0]!]), e.oppPlay!);
+      e.applyResult();
+      expect(e.result!.winner, Winner.you);
+      expect(e.integrityYou, 3);
+    });
+
+    test('PARCHE: −1 extra al perder', () {
+      final e = _engine('wraith', 'sentinel', 1); // WRAITH no tiene BLINDAJE
+      e.integrityYou = 3;
+      e.active = _rut('xp_base');
+      e.subs[0] = _sub('patch');
+      e.oppPlay = _p(_rut('fw_base'));
+      e.result = resolve(Play(e.active!, [e.subs[0]!]), e.oppPlay!);
+      e.applyResult();
+      expect(e.result!.winner, Winner.opp);
+      expect(e.integrityYou, 1); // −1 daño base −1 extra de PARCHE
+    });
+
+    test('IRON-WALL aplica −1 RAM la próxima ronda', () {
+      final e = _engine('sentinel', 'wraith', 2);
+      final base = e.nucYou.ram;
+      e.active = _rut('fw_iron');
+      e.oppPlay = _p(_rut('xp_base'));
+      e.result = resolve(Play(e.active!, const []), e.oppPlay!);
+      e.applyResult();
+      e.nextRound();
+      expect(e.ramMax, base - 1);
+    });
+
+    test('DESFRAG no rompe el robo (mano válida tras rebarajar)', () {
+      final e = _engine('wraith', 'sentinel', 3);
+      e.active = _rut('xp_base');
+      e.subs[0] = _sub('shuffle_loser');
+      e.oppPlay = _p(_rut('fw_base'));
+      e.result = resolve(Play(e.active!, [e.subs[0]!]), e.oppPlay!);
+      e.applyResult();
+      expect(e.result!.winner, Winner.opp); // perdiste → rebarajas
+      e.nextRound();
+      expect(e.handYou.any((c) => !c.isSub), isTrue); // ≥1 Rutina
+      expect(e.handYou.length, lessThanOrEqualTo(kMaxHand));
+    });
+  });
 }

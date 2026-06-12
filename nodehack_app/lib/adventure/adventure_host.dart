@@ -4,11 +4,13 @@
 library;
 
 import 'dart:async';
+import 'dart:math';
 
 import 'package:flutter/material.dart';
 
 import 'package:nodehack_engine/card_instance.dart';
 
+import '../audio/audio_service.dart';
 import '../theme/tokens.dart';
 import '../widgets/card_view.dart';
 import '../widgets/matrix_rain.dart';
@@ -21,12 +23,14 @@ class AdventureHost extends StatelessWidget {
   final void Function(CardInstance) onZoom;
   final VoidCallback onExit;
   final VoidCallback onEnterCombat; // monta el duelo (lo crea main)
+  final VoidCallback onConfigDeck; // abre el constructor de mazo de aventura
   const AdventureHost({
     super.key,
     required this.ctrl,
     required this.onZoom,
     required this.onExit,
     required this.onEnterCombat,
+    required this.onConfigDeck,
   });
 
   AdventureState get st => ctrl.st;
@@ -48,16 +52,46 @@ class AdventureHost extends StatelessWidget {
     );
   }
 
-  Widget _topBar() => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 8, 16, 6),
-        child: Row(children: [
+  Widget _topBar() {
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 8, 16, 4),
+      child: Column(children: [
+        Row(children: [
           GestureDetector(onTap: onExit, child: Text('‹ SALIR', style: NH.mono(size: 11, color: NH.ink2, spacing: 1))),
           const Spacer(),
-          Text('INMERSIÓN · sector ${st.sector}', style: NH.mono(size: 10, color: NH.dim, spacing: 1)),
+          Text('INMERSIÓN · ${st.runPoints}↯ · ${st.bossesDone}/$kBossCount ◈',
+              style: NH.mono(size: 9.5, color: NH.dim, spacing: .5)),
           const Spacer(),
           Text('◆ ${st.credits}', style: NH.mono(size: 12, weight: FontWeight.w700, color: NH.amber)),
         ]),
-      );
+        const SizedBox(height: 5),
+        _corruptionBar(),
+      ]),
+    );
+  }
+
+  Widget _corruptionBar() {
+    final c = st.corruption.clamp(0, 100) / 100.0;
+    final danger = st.corruption >= kCorruptEnemyBuffAt;
+    return Row(children: [
+      Text('CORRUPCIÓN', style: NH.mono(size: 7.5, color: NH.dim2, spacing: 1)),
+      const SizedBox(width: 6),
+      Expanded(
+        child: ClipRRect(
+          borderRadius: BorderRadius.circular(3),
+          child: Stack(children: [
+            Container(height: 5, color: NH.a(NH.nl, .12)),
+            FractionallySizedBox(
+              widthFactor: c,
+              child: Container(height: 5, color: danger ? NH.xp : NH.nl),
+            ),
+          ]),
+        ),
+      ),
+      const SizedBox(width: 6),
+      Text('${st.corruption}', style: NH.mono(size: 8, weight: FontWeight.w700, color: danger ? NH.xp : NH.nl)),
+    ]);
+  }
 
   Widget _body() {
     switch (ctrl.step) {
@@ -73,70 +107,30 @@ class AdventureHost extends StatelessWidget {
         return _shopView();
       case AdvStep.fragment:
         return _fragmentView();
-      case AdvStep.sectorEnd:
-        return _sectorEndView();
+      case AdvStep.event:
+        return _eventView();
       case AdvStep.combat:
-        return const SizedBox.shrink(); // lo monta main (MatchScreen)
+      case AdvStep.ending:
+        return const SizedBox.shrink(); // los monta main (MatchScreen / EndingScreen)
     }
   }
 
-  // ── ELECCIÓN DE CAMINO (3 cartas crípticas) ──
-  Widget _pathView() {
+  // ── MINI-EVENTO (monólogo del rol, amnésico) ──
+  Widget _eventView() {
+    final col = Color(st.nature.nucleo.color);
     return Column(children: [
-      const SizedBox(height: 8),
-      Text('TRES RUTAS', style: NH.disp(size: 22, weight: FontWeight.w700, color: const Color(0xFFEAF7FF), spacing: 3)),
-      const SizedBox(height: 6),
-      Text('El sistema no te muestra a dónde llevan.\nElige con el instinto.',
-          textAlign: TextAlign.center, style: NH.mono(size: 10, color: NH.dim, height: 1.5)),
       const Spacer(),
-      Row(
-        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-        children: [for (var i = 0; i < ctrl.paths.length; i++) _pathCard(i)],
-      ),
+      Text('∅ // ${st.nature.name}', style: NH.mono(size: 11, color: col, spacing: 3)),
+      const SizedBox(height: 18),
+      _Typed(text: ctrl.eventText, color: const Color(0xFFEAF7FF)),
       const Spacer(flex: 2),
+      _wideBtn('CONTINUAR ▸', col, ctrl.nextFromEvent),
+      const SizedBox(height: 24),
     ]);
   }
 
-  Widget _pathCard(int i) {
-    return GestureDetector(
-      onTap: () => ctrl.choosePath(i),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        Stack(alignment: Alignment.center, children: [
-          CardBackView(width: 92, seed: 13 + i * 7),
-          Container(
-            width: 92,
-            height: 128,
-            alignment: Alignment.center,
-            decoration: BoxDecoration(
-              borderRadius: BorderRadius.circular(8),
-              color: NH.a(NH.bg, .35),
-              border: Border.all(color: NH.a(NH.fw, .55)),
-              boxShadow: [BoxShadow(color: NH.a(NH.fw, .18), blurRadius: 14)],
-            ),
-            child: Text(const ['?', '▒', '∅'][i % 3],
-                style: NH.disp(size: 34, weight: FontWeight.w700, color: NH.a(NH.fw, .8))),
-          ),
-        ]),
-        const SizedBox(height: 6),
-        _signalBar(i),
-      ]),
-    );
-  }
-
-  // Barra de "señal" cosmética (no revela el tipo — sigue siendo críptico).
-  Widget _signalBar(int i) {
-    final bars = 1 + ((i * 2 + ctrl.st.battles) % 3);
-    return Row(mainAxisSize: MainAxisSize.min, children: [
-      for (var b = 0; b < 3; b++)
-        Container(
-          width: 7, height: 4, margin: const EdgeInsets.symmetric(horizontal: 1.5),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(1),
-            color: b < bars ? NH.a(NH.fw, .8) : NH.a(NH.dim2, .6),
-          ),
-        ),
-    ]);
-  }
+  // ── ELECCIÓN DE CAMINO (3 cartas crípticas, con animación de "entrar") ──
+  Widget _pathView() => _PathChoice(ctrl: ctrl, onConfigDeck: onConfigDeck);
 
   // ── LORE PRE-COMBATE / INTRO DE JEFE ──
   Widget _loreView({required bool boss}) {
@@ -154,6 +148,18 @@ class AdventureHost extends StatelessWidget {
         Text(e.name, style: NH.disp(size: 20, weight: FontWeight.w700, color: accent, spacing: 1)),
         const SizedBox(height: 6),
         Text(e.flavor, textAlign: TextAlign.center, style: NH.mono(size: 10, color: NH.ink2, height: 1.5)),
+      ],
+      if (ctrl.modLabel.isNotEmpty) ...[
+        const SizedBox(height: 14),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 7),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            color: NH.a(NH.xp, .08),
+            border: Border.all(color: NH.a(NH.xp, .6)),
+          ),
+          child: Text('⚠ ${ctrl.modLabel}', textAlign: TextAlign.center, style: NH.mono(size: 9.5, weight: FontWeight.w700, color: NH.xp, height: 1.4)),
+        ),
       ],
       const Spacer(flex: 2),
       _wideBtn(boss ? 'ENFRENTAR AL KERNEL ▸' : 'EJECUTAR DUELO ▸', accent, onEnterCombat),
@@ -314,28 +320,6 @@ class AdventureHost extends StatelessWidget {
         ),
       );
 
-  // ── FIN DE TRAMO ──
-  Widget _sectorEndView() {
-    return Column(children: [
-      const Spacer(),
-      Text('TRAMO PURGADO', style: NH.disp(size: 24, weight: FontWeight.w700, color: NH.pl, spacing: 2)),
-      const SizedBox(height: 10),
-      Text('Has llegado más lejos que casi todos los procesos.',
-          textAlign: TextAlign.center, style: NH.mono(size: 10, color: NH.ink2, height: 1.5)),
-      const SizedBox(height: 18),
-      Text('NATURALEZA ACTUAL', style: NH.mono(size: 8.5, color: NH.dim, spacing: 2)),
-      const SizedBox(height: 4),
-      Text(st.nature.name, style: NH.disp(size: 18, weight: FontWeight.w700, color: NH.nl, spacing: 1)),
-      const SizedBox(height: 4),
-      Text(st.nature.endingHint, textAlign: TextAlign.center, style: NH.mono(size: 10, color: NH.a(NH.nl, .9))),
-      const Spacer(flex: 2),
-      _wideBtn('SEGUIR DESCENDIENDO ▸', NH.pl, ctrl.continueAfterSector),
-      const SizedBox(height: 10),
-      GestureDetector(onTap: onExit, child: Text('GUARDAR Y SALIR', style: NH.mono(size: 11, color: NH.dim, spacing: 1))),
-      const SizedBox(height: 24),
-    ]);
-  }
-
   // ── Botón ancho reutilizable ──
   Widget _wideBtn(String label, Color accent, VoidCallback onTap, {bool ghost = false}) {
     return GestureDetector(
@@ -410,6 +394,157 @@ class _TypedState extends State<_Typed> {
       widget.text.substring(0, _chars.clamp(0, widget.text.length)),
       textAlign: TextAlign.center,
       style: NH.mono(size: 14, color: widget.color, height: 1.6),
+    );
+  }
+}
+
+/// Elección de camino: 3 cartas crípticas. Al tocar una, esa carta se EXPANDE y
+/// llena la pantalla (sensación de "entrar a la carta / llegar al tablero"); al
+/// terminar la animación, avanza al encuentro. Incluye acceso al constructor de mazo.
+class _PathChoice extends StatefulWidget {
+  final AdventureController ctrl;
+  final VoidCallback onConfigDeck;
+  const _PathChoice({required this.ctrl, required this.onConfigDeck});
+
+  @override
+  State<_PathChoice> createState() => _PathChoiceState();
+}
+
+class _PathChoiceState extends State<_PathChoice> with SingleTickerProviderStateMixin {
+  late final AnimationController _enter;
+  int? _expanding; // índice de la carta a la que estás "entrando"
+
+  @override
+  void initState() {
+    super.initState();
+    _enter = AnimationController(vsync: this, duration: const Duration(milliseconds: 680));
+    _enter.addStatusListener((s) {
+      if (s == AnimationStatus.completed && _expanding != null) {
+        widget.ctrl.choosePath(_expanding!); // cambia de step → este widget se desmonta
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _enter.dispose();
+    super.dispose();
+  }
+
+  void _choose(int i) {
+    if (_expanding != null) return;
+    AudioService.instance.playSfx(Sfx.compile);
+    setState(() => _expanding = i);
+    _enter.forward(from: 0);
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _enter,
+      builder: (context, _) {
+        final t = _enter.value;
+        return Stack(children: [
+          Opacity(opacity: _expanding == null ? 1 : (1 - t).clamp(0.0, 1.0), child: _content()),
+          if (_expanding != null) _diveOverlay(t),
+        ]);
+      },
+    );
+  }
+
+  Widget _content() {
+    final c = widget.ctrl;
+    return Column(children: [
+      const SizedBox(height: 6),
+      Text('TRES RUTAS', style: NH.disp(size: 22, weight: FontWeight.w700, color: const Color(0xFFEAF7FF), spacing: 3)),
+      const SizedBox(height: 6),
+      Text('El sistema no te muestra a dónde llevan.\nElige con el instinto.',
+          textAlign: TextAlign.center, style: NH.mono(size: 10, color: NH.dim, height: 1.5)),
+      const Spacer(),
+      Row(
+        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+        children: [for (var i = 0; i < c.paths.length; i++) _card(i)],
+      ),
+      const Spacer(),
+      GestureDetector(
+        onTap: widget.onConfigDeck,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(8),
+            border: Border.all(color: NH.a(NH.fw, .5)),
+            color: NH.a(NH.fw, .06),
+          ),
+          child: Text('⚙  CONFIGURAR MAZO', style: NH.mono(size: 11, weight: FontWeight.w700, color: NH.fw, spacing: 1.5)),
+        ),
+      ),
+      const SizedBox(height: 16),
+    ]);
+  }
+
+  Widget _card(int i) {
+    final bars = 1 + ((i * 2 + widget.ctrl.st.battles) % 3);
+    return GestureDetector(
+      onTap: () => _choose(i),
+      child: Column(mainAxisSize: MainAxisSize.min, children: [
+        Stack(alignment: Alignment.center, children: [
+          CardBackView(width: 92, seed: 13 + i * 7),
+          Container(
+            width: 92,
+            height: 128,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              color: NH.a(NH.bg, .35),
+              border: Border.all(color: NH.a(NH.fw, .55)),
+              boxShadow: [BoxShadow(color: NH.a(NH.fw, .18), blurRadius: 14)],
+            ),
+            child: Text(const ['?', '▒', '∅'][i % 3],
+                style: NH.disp(size: 34, weight: FontWeight.w700, color: NH.a(NH.fw, .8))),
+          ),
+        ]),
+        const SizedBox(height: 6),
+        Row(mainAxisSize: MainAxisSize.min, children: [
+          for (var b = 0; b < 3; b++)
+            Container(
+              width: 7, height: 4, margin: const EdgeInsets.symmetric(horizontal: 1.5),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(1),
+                color: b < bars ? NH.a(NH.fw, .8) : NH.a(NH.dim2, .6),
+              ),
+            ),
+        ]),
+      ]),
+    );
+  }
+
+  // La carta elegida crece hasta llenar la pantalla + un flood cian (llegaste).
+  Widget _diveOverlay(double t) {
+    final scale = 1 + t * t * 13; // acelera al final
+    final glitch = sin(t * 42) * 6 * (1 - t);
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: Stack(children: [
+          Center(
+            child: Transform.translate(
+              offset: Offset(glitch, 0),
+              child: Transform.scale(
+                scale: scale,
+                child: Opacity(opacity: (1 - t * .5).clamp(0.0, 1.0), child: CardBackView(width: 92, seed: 13 + _expanding! * 7)),
+              ),
+            ),
+          ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                radius: .2 + t * 1.2,
+                colors: [NH.a(NH.fw, t * t * .95), NH.a(NH.fw, t * .35), Colors.transparent],
+                stops: const [0, .55, 1],
+              ),
+            ),
+          ),
+        ]),
+      ),
     );
   }
 }

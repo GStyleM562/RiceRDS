@@ -14,6 +14,10 @@ import 'package:nodehack_engine/deck.dart';
 /// puedes cambiarla en el app por `ws://IP-de-tu-PC:8080/ws`.
 const String kDefaultServerUrl = 'wss://nodehack-server.onrender.com/ws';
 
+/// Mientras probamos las cartas nuevas, TODAS están desbloqueadas en multijugador.
+/// Poner en `false` activa el desbloqueo escalonado por partidas/anuncios.
+const bool kUnlockAllForTesting = true;
+
 class AppState extends ChangeNotifier {
   static const _kDecks = 'nh_decks';
   static const _kActive = 'nh_active_deck';
@@ -24,6 +28,7 @@ class AppState extends ChangeNotifier {
   static const _kIntro = 'nh_intro';
   static const _kTutBasic = 'nh_tut_basic';
   static const _kTutAdv = 'nh_tut_adv';
+  static const _kGames = 'nh_games';
 
   NucleoDef nucleo = kNucleos.first;
   List<Deck> decks = [];
@@ -39,13 +44,28 @@ class AppState extends ChangeNotifier {
   bool tutorialBasicDone = false;
   bool tutorialAdvancedDone = false;
 
+  // Partidas de Versus jugadas (para desbloquear cartas nuevas en multijugador).
+  int gamesPlayed = 0;
+
   Deck get currentDeck =>
       decks.isEmpty ? Deck.starter() : decks[activeDeck.clamp(0, decks.length - 1)];
 
-  /// ¿La carta está desbloqueada para el MULTIJUGADOR? (provisión a futuro). Hoy
-  /// todas las cartas actuales son "base"/gratuitas; cartas nuevas se desbloquearán
-  /// jugando X partidas o viendo anuncios. La colección de Historia es aparte.
-  bool isMultiplayerUnlocked(String cardId) => kAllCardIds.contains(cardId);
+  /// ¿La carta está desbloqueada para el MULTIJUGADOR? Las cartas base (las que ya
+  /// existían) siempre; las nuevas, jugando [kCardUnlockGames] partidas (o por
+  /// anuncios, a futuro). Con [kUnlockAllForTesting] todas están abiertas para probar.
+  bool isMultiplayerUnlocked(String cardId) {
+    if (kUnlockAllForTesting) return true;
+    final req = kCardUnlockGames[cardId];
+    if (req == null) return kAllCardIds.contains(cardId); // base / desconocida
+    return gamesPlayed >= req;
+  }
+
+  /// Partidas que faltan para desbloquear [cardId] (0 si ya está). Para la UI.
+  int gamesToUnlock(String cardId) {
+    final req = kCardUnlockGames[cardId];
+    if (req == null) return 0;
+    return (req - gamesPlayed).clamp(0, req);
+  }
 
   Future<void> load() async {
     final p = await SharedPreferences.getInstance();
@@ -69,7 +89,15 @@ class AppState extends ChangeNotifier {
     introSeen = p.getBool(_kIntro) ?? false;
     tutorialBasicDone = p.getBool(_kTutBasic) ?? false;
     tutorialAdvancedDone = p.getBool(_kTutAdv) ?? false;
+    gamesPlayed = p.getInt(_kGames) ?? 0;
     notifyListeners();
+  }
+
+  /// Cuenta una partida de Versus terminada (alimenta el desbloqueo de cartas).
+  void incGamesPlayed() {
+    gamesPlayed++;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setInt(_kGames, gamesPlayed));
   }
 
   void markIntroSeen() {
@@ -91,6 +119,20 @@ class AppState extends ChangeNotifier {
     tutorialAdvancedDone = true;
     notifyListeners();
     SharedPreferences.getInstance().then((p) => p.setBool(_kTutAdv, true));
+  }
+
+  /// Vuelve al estado de "primera vez": la próxima vez (o ahora mismo) verás la
+  /// intro y la ventana de tutorial otra vez. No toca mazos ni Historia.
+  void resetOnboarding() {
+    introSeen = false;
+    tutorialBasicDone = false;
+    tutorialAdvancedDone = false;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) {
+      p.remove(_kIntro);
+      p.remove(_kTutBasic);
+      p.remove(_kTutAdv);
+    });
   }
 
   static String _genDeviceId() {

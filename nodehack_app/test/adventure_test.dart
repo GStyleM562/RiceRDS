@@ -8,9 +8,12 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:nodehack_engine/cards.dart';
 import 'package:nodehack_app/adventure/adventure_controller.dart';
 import 'package:nodehack_app/adventure/adventure_data.dart';
+import 'package:nodehack_app/adventure/adventure_deck_screen.dart';
 import 'package:nodehack_app/adventure/adventure_host.dart';
 import 'package:nodehack_app/adventure/codex_screen.dart';
 import 'package:nodehack_app/adventure/adventure_state.dart';
+import 'package:nodehack_app/adventure/ending_screen.dart';
+import 'package:nodehack_app/screens/settings_screen.dart';
 
 Future<void> _pump(WidgetTester t, Widget child) async {
   await t.binding.setSurfaceSize(const Size(390, 844));
@@ -55,30 +58,106 @@ void main() {
     expect(st.credits, greaterThan(0));
   });
 
-  test('Controller: el JEFE aparece al umbral; perder solo retrocede el contador', () {
+  test('Controller: el JEFE aparece a los 10 run-points; perder pone cooldown', () {
     final st = AdventureState();
     st.startNewRun();
-    st.sinceBoss = kBattlesPerSector; // fuerza el umbral del jefe
+    st.runPoints = 10; // umbral del 1er jefe
     final c = AdventureController(st, seed: 1);
     expect(c.step, AdvStep.bossIntro);
     expect(c.isBoss, isTrue);
     c.startCombat();
     expect(c.step, AdvStep.combat);
     c.onCombatEnd(false); // pierdes vs el jefe
-    expect(st.sector, 1); // NO avanzó de sector
-    expect(st.sinceBoss, lessThan(kBattlesPerSector)); // contador retrocedió
+    expect(st.bossesDone, 0); // NO avanzó
+    expect(st.bossCooldown, greaterThan(0)); // cooldown para reintentar
   });
 
-  test('Controller: ganar al JEFE avanza de sector', () {
+  test('Controller: ganar al JEFE incrementa bossesDone; el 5º dispara el final', () {
     final st = AdventureState();
     st.startNewRun();
-    st.sinceBoss = kBattlesPerSector;
-    final c = AdventureController(st, seed: 1);
+    st.runPoints = 10;
+    var c = AdventureController(st, seed: 1);
     c.startCombat();
     c.onCombatEnd(true);
-    expect(st.sector, 2);
-    expect(st.sinceBoss, 0);
-    expect(c.step, AdvStep.sectorEnd);
+    expect(st.bossesDone, 1);
+
+    // Fuerza el 5º jefe con voluntad suficiente → final verdadero.
+    st.bossesDone = 4;
+    st.runPoints = 50;
+    st.naturePoints['guardian'] = 25;
+    c = AdventureController(st, seed: 1);
+    expect(c.step, AdvStep.bossIntro);
+    c.startCombat();
+    c.onCombatEnd(true);
+    expect(st.bossesDone, 5);
+    expect(c.step, AdvStep.ending);
+    expect(c.endingId, 'true_guardian');
+  });
+
+  test('Dos monedas: +1/win, +3/jefe, checkpoint, y −10% solo desde el 1er jefe', () {
+    final st = AdventureState();
+    st.startNewRun();
+    for (var i = 0; i < 10; i++) {
+      st.recordCombat(win: true, elite: false);
+    }
+    expect(st.runPoints, 10);
+    expect(st.runFloor, 10);
+    expect(st.naturePointsOf('guardian'), 10);
+    st.recordBoss(win: true);
+    expect(st.bossesDone, 1);
+    expect(st.naturePointsOf('guardian'), 13); // +3
+    st.recordCombat(win: false, elite: false);
+    expect(st.runPoints, 10); // checkpoint: no baja de 10
+    expect(st.naturePointsOf('guardian'), lessThan(13)); // −10% (ya hubo jefe)
+  });
+
+  test('Naturaleza NO baja al perder antes del 1er jefe', () {
+    final st = AdventureState();
+    st.startNewRun();
+    st.recordCombat(win: true, elite: false);
+    expect(st.naturePointsOf('guardian'), 1);
+    st.recordCombat(win: false, elite: false);
+    expect(st.naturePointsOf('guardian'), 1); // intacto
+  });
+
+  test('evaluateEnding: básico/verdadero/corrupción-NULL/secreto', () {
+    final st = AdventureState();
+    st.startNewRun();
+    st.naturePoints['guardian'] = 10;
+    expect(st.evaluateEnding(), kBasicEndingId);
+    st.naturePoints['guardian'] = 22;
+    expect(st.evaluateEnding(), 'true_guardian');
+    st.corruption = 90; // vacío gana, sin voluntad NULL → básico
+    expect(st.evaluateEnding(), kBasicEndingId);
+    st.naturePoints['nulo'] = 30; // ahora NULL tiene voluntad
+    expect(st.evaluateEnding(), 'true_nulo');
+    st.corruption = 0;
+    st.unlockedEndings.addAll([for (final n in kNatures) n.trueEndingId]);
+    expect(st.evaluateEnding(), kSecretEndingId);
+  });
+
+  test('concludeRun: verdadero resetea naturaleza y desbloquea; básico conserva 25%', () {
+    final st = AdventureState();
+    st.startNewRun();
+    st.naturePoints['guardian'] = 28;
+    st.concludeRun('true_guardian');
+    expect(st.unlockedEndings.contains('true_guardian'), isTrue);
+    expect(st.naturePointsOf('guardian'), 0); // reset tras verdadero
+    st.naturePoints['espectro'] = 20;
+    st.concludeRun(kBasicEndingId);
+    expect(st.naturePointsOf('espectro'), 5); // 25% de 20
+    expect(st.unlockedEndings.contains('true_guardian'), isTrue); // meta se conserva
+  });
+
+  test('Mini-eventos: cada umbral 1 sola vez por run', () {
+    final st = AdventureState();
+    st.startNewRun();
+    st.runPoints = 7;
+    expect(st.pendingEvent(), 5);
+    st.markEventFired(5);
+    expect(st.pendingEvent(), isNull);
+    st.runPoints = 12;
+    expect(st.pendingEvent(), 10);
   });
 
   test('Controller: ganar un combate normal ofrece botín y se puede elegir', () {
@@ -108,7 +187,7 @@ void main() {
     final st = AdventureState();
     st.startNewRun();
     final c = AdventureController(st, seed: 3); // arranca en path
-    await _pump(t, AdventureHost(ctrl: c, onZoom: (_) {}, onExit: () {}, onEnterCombat: () {}));
+    await _pump(t, AdventureHost(ctrl: c, onZoom: (_) {}, onExit: () {}, onEnterCombat: () {}, onConfigDeck: () {}));
     expect(t.takeException(), isNull);
     c.dispose();
   });
@@ -119,5 +198,64 @@ void main() {
     st.addCard('fw_iron');
     await _pump(t, CodexScreen(st: st, onBack: () {}, onZoom: (_) {}));
     expect(t.takeException(), isNull);
+  });
+
+  testWidgets('AdventureDeckScreen monta sin overflow (subs bloqueadas)', (t) async {
+    final st = AdventureState();
+    st.startNewRun();
+    await _pump(t, AdventureDeckScreen(st: st, onBack: () {}, onZoom: (_) {}));
+    expect(t.takeException(), isNull);
+  });
+
+  testWidgets('SettingsScreen monta sin overflow', (t) async {
+    await _pump(t, SettingsScreen(onBack: () {}, onResetFirstTime: () {}, onWipeStory: () {}, hasStoryRun: true));
+    expect(t.takeException(), isNull);
+  });
+
+  test('Balance: enemigos tier 0 = solo básicas, SIN Subrutinas', () {
+    for (final e in combatEnemies(0)) {
+      expect(e.sub.isEmpty, isTrue, reason: e.name);
+      for (final id in e.rut.keys) {
+        expect(const ['fw_base', 'xp_base', 'pl_base'].contains(id), isTrue, reason: id);
+      }
+    }
+  });
+
+  test('Balance: enemyTier escala con subsUnlocked y bossesDone', () {
+    expect(enemyTier(subsUnlocked: false, bossesDone: 0), 0);
+    expect(enemyTier(subsUnlocked: true, bossesDone: 0), 1);
+    expect(enemyTier(subsUnlocked: true, bossesDone: 2), 2);
+  });
+
+  testWidgets('EndingScreen monta sin overflow (verdadero y secreto)', (t) async {
+    await _pump(t, EndingScreen(view: endingViewFor('true_guardian'), onClose: () {}));
+    expect(t.takeException(), isNull);
+    await _pump(t, EndingScreen(view: endingViewFor(kSecretEndingId), onClose: () {}));
+    expect(t.takeException(), isNull);
+  });
+
+  test('Perder un combate NO da créditos ni victorias', () {
+    final st = AdventureState();
+    st.startNewRun();
+    final before = st.credits;
+    st.recordCombat(win: false, elite: false);
+    expect(st.credits, before);
+    expect(st.wins, 0);
+    expect(st.battles, 1);
+  });
+
+  test('deck builder: setInDeck acota a lo poseído; wipe borra todo', () {
+    final st = AdventureState();
+    st.startNewRun();
+    expect(st.inDeck('fw_base'), 2); // arranca con todo en el mazo
+    st.setInDeck('fw_base', 0);
+    expect(st.inDeck('fw_base'), 0);
+    expect(st.advDeck.rut['fw_base'], isNull);
+    st.setInDeck('fw_base', 99); // se acota a lo poseído (2)
+    expect(st.inDeck('fw_base'), 2);
+    st.wipe();
+    expect(st.hasRun, isFalse);
+    expect(st.collection.isEmpty, isTrue);
+    expect(st.deckSel.isEmpty, isTrue);
   });
 }

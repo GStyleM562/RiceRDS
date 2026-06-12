@@ -4,9 +4,12 @@ import 'package:flutter/material.dart';
 import 'package:nodehack_engine/card_instance.dart';
 import 'package:nodehack_engine/deck.dart';
 import 'adventure/adventure_controller.dart';
+import 'adventure/adventure_data.dart';
+import 'adventure/adventure_deck_screen.dart';
 import 'adventure/adventure_host.dart';
 import 'adventure/adventure_state.dart';
 import 'adventure/codex_screen.dart';
+import 'adventure/ending_screen.dart';
 import 'audio/audio_service.dart';
 import 'state/app_state.dart';
 import 'state/match_controller.dart';
@@ -20,6 +23,7 @@ import 'screens/menu_screen.dart';
 import 'screens/nucleo_screen.dart';
 import 'screens/online_screen.dart';
 import 'screens/rules_screen.dart';
+import 'screens/settings_screen.dart';
 import 'theme/tokens.dart';
 import 'tutorial/tutorial_match_controller.dart';
 import 'tutorial/tutorial_overlay.dart';
@@ -47,7 +51,7 @@ class NodehackApp extends StatelessWidget {
       );
 }
 
-enum _Screen { menu, intro, tutorial, rules, adventure, codex, nucleo, deckList, deckBuilder, match, online, flush }
+enum _Screen { menu, intro, tutorial, rules, settings, adventure, codex, nucleo, deckList, deckBuilder, match, online, flush }
 
 class _AppRootState extends State<AppRoot> {
   final AppState app = AppState();
@@ -58,6 +62,7 @@ class _AppRootState extends State<AppRoot> {
   TutorialMatchController? _tutorial;
   AdventureController? _advCtrl; // run de INMERSIÓN activa
   MatchController? _advMatch; // duelo dentro de la run
+  bool _advDeckOpen = false; // constructor de mazo de aventura abierto
   MatchSummary _flushSummary = const MatchSummary(outcome: 'win', round: 0, history: []);
   bool _flushFromOnline = false;
   CardInstance? _zoom; // carta en modo "zoom" (lectura)
@@ -99,6 +104,8 @@ class _AppRootState extends State<AppRoot> {
       deckOpp: e.deck(),
       nucOpp: e.nucleo,
       oppName: e.name,
+      integrityYouBonus: c.combatYouBonus,
+      integrityOppBonus: c.combatOppBonus,
       onFlush: (s) {
         final win = s.outcome == 'win';
         final m = _advMatch;
@@ -121,6 +128,24 @@ class _AppRootState extends State<AppRoot> {
   }
 
   void _exitAdventure() => _toMenu();
+
+  // Ajustes: vuelve al estado de "primera vez" y muestra la intro ahora mismo.
+  void _resetFirstTime() {
+    app.resetOnboarding();
+    _tutorialOffered = false;
+    _go(_Screen.intro);
+  }
+
+  // Ajustes: borra el progreso de Historia y refresca el menú.
+  void _wipeStory() {
+    _advMatch?.dispose();
+    _advMatch = null;
+    _advCtrl?.dispose();
+    _advCtrl = null;
+    _advDeckOpen = false;
+    adv.wipe();
+    setState(() {});
+  }
 
   void _startTutorial() {
     _tutorial?.dispose();
@@ -158,6 +183,7 @@ class _AppRootState extends State<AppRoot> {
     _match = MatchController(
       deckYou: app.currentDeck,
       onFlush: (summary) {
+        app.incGamesPlayed(); // cuenta para desbloquear cartas
         _flushSummary = summary;
         _go(_Screen.flush);
       },
@@ -175,6 +201,7 @@ class _AppRootState extends State<AppRoot> {
     _advMatch = null;
     _advCtrl?.dispose();
     _advCtrl = null;
+    _advDeckOpen = false;
     setState(() {
       screen = _Screen.menu;
       _zoom = null;
@@ -208,9 +235,13 @@ class _AppRootState extends State<AppRoot> {
           app.markIntroSeen();
           _toMenu();
         } else if (screen == _Screen.adventure) {
-          // En combate, la mesa maneja su propio "atrás" (rendición); fuera de
-          // combate el "atrás" sale al menú (la run queda guardada).
-          _exitAdventure();
+          // En el constructor de mazo, "atrás" lo cierra; en combate la mesa maneja
+          // su propio "atrás" (rendición); fuera de eso, sale al menú (run guardada).
+          if (_advDeckOpen) {
+            setState(() => _advDeckOpen = false);
+          } else {
+            _exitAdventure();
+          }
         } else if (screen != _Screen.menu) {
           _toMenu();
         }
@@ -470,16 +501,42 @@ class _AppRootState extends State<AppRoot> {
           onAdventure: _enterAdventure,
           hasAdventureRun: adv.hasRun,
           onCodex: () => _go(_Screen.codex),
+          onSettings: () => _go(_Screen.settings),
           onDebugRoutes: kDebugMode ? () => setState(() => _showRoutes = true) : null,
+        );
+      case _Screen.settings:
+        return SettingsScreen(
+          onBack: () => _go(_Screen.menu),
+          onResetFirstTime: _resetFirstTime,
+          onWipeStory: _wipeStory,
+          hasStoryRun: adv.hasRun,
         );
       case _Screen.adventure:
         return AnimatedBuilder(
           animation: _advCtrl!,
           builder: (context, _) {
+            if (_advDeckOpen) {
+              return AdventureDeckScreen(st: adv, onBack: () => setState(() => _advDeckOpen = false), onZoom: _showZoom);
+            }
+            if (_advCtrl!.step == AdvStep.ending) {
+              return EndingScreen(
+                view: endingViewFor(_advCtrl!.endingId, dominantNatureId: adv.dominantNature()),
+                onClose: () {
+                  adv.concludeRun(_advCtrl!.endingId); // desbloquea + reinicia la run
+                  _exitAdventure();
+                },
+              );
+            }
             if (_advCtrl!.step == AdvStep.combat && _advMatch != null) {
               return MatchScreen(ctrl: _advMatch!, onExit: _forfeitAdvCombat, onInspect: _showZoom);
             }
-            return AdventureHost(ctrl: _advCtrl!, onZoom: _showZoom, onEnterCombat: _enterAdvCombat, onExit: _exitAdventure);
+            return AdventureHost(
+              ctrl: _advCtrl!,
+              onZoom: _showZoom,
+              onEnterCombat: _enterAdvCombat,
+              onExit: _exitAdventure,
+              onConfigDeck: () => setState(() => _advDeckOpen = true),
+            );
           },
         );
       case _Screen.codex:
@@ -533,6 +590,8 @@ class _AppRootState extends State<AppRoot> {
           initial: initial,
           onBack: () => _go(_Screen.deckList),
           onInspect: _showZoom,
+          cardLocked: (id) => !app.isMultiplayerUnlocked(id),
+          gamesLeft: app.gamesToUnlock,
           onSave: (d) {
             app.saveDeck(d, index: _editIndex);
             _go(_Screen.deckList);
@@ -550,6 +609,7 @@ class _AppRootState extends State<AppRoot> {
           onExit: _toMenu,
           onInspect: _showZoom,
           onFlush: (summary) {
+            app.incGamesPlayed();
             _flushFromOnline = true;
             _flushSummary = summary;
             _go(_Screen.flush);

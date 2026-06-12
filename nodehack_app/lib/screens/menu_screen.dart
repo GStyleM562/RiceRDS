@@ -15,6 +15,7 @@ class MenuScreen extends StatelessWidget {
   final VoidCallback? onAdventure;
   final bool hasAdventureRun;
   final VoidCallback? onCodex;
+  final VoidCallback? onSettings;
   final VoidCallback? onDebugRoutes; // solo en debug: abre el panel de rutas de assets
   final String nucleoName;
   const MenuScreen({
@@ -28,6 +29,7 @@ class MenuScreen extends StatelessWidget {
     this.onAdventure,
     this.hasAdventureRun = false,
     this.onCodex,
+    this.onSettings,
     this.onDebugRoutes,
     required this.nucleoName,
   });
@@ -76,6 +78,8 @@ class MenuScreen extends StatelessWidget {
               _MenuBtn(glyph: '☰', label: 'REGLAS', sub: 'Referencia rápida de términos', onTap: onRules),
               const SizedBox(height: 9),
               _MenuBtn(glyph: '⌬', label: 'COLECCIÓN', sub: 'Cartas e historia descubiertas', onTap: onCodex),
+              const SizedBox(height: 9),
+              _MenuBtn(glyph: '⚙', label: 'AJUSTES', sub: 'Datos · reiniciar primera vez', onTap: onSettings),
                       const SizedBox(height: 14),
                     ],
                   ),

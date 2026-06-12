@@ -47,6 +47,7 @@ class MatchEngine {
   bool _wraithNextYou = false, _wraithNextOpp = false;
   int _ramPenYou = 0, _ramPenOpp = 0;
   bool _empAgainstYou = false, _empAgainstOpp = false;
+  bool _shuffleNextYou = false, _shuffleNextOpp = false; // DESFRAG/FORMATEO
 
   bool gameOver = false;
   String? outcome; // 'win' | 'lose'
@@ -56,9 +57,11 @@ class MatchEngine {
     required this.nucOpp,
     required this.deckYou,
     required this.deckOpp,
+    int integrityYouBonus = 0, // modificadores del modo Historia (caminos infectados, jefes)
+    int integrityOppBonus = 0,
     Random? rng,
-  })  : integrityYou = nucYou.integrity,
-        integrityOpp = nucOpp.integrity,
+  })  : integrityYou = (nucYou.integrity + integrityYouBonus).clamp(1, 99),
+        integrityOpp = (nucOpp.integrity + integrityOppBonus).clamp(1, 99),
         rng = rng ?? Random() {
     _pilesYou = PileSet(deckYou, this.rng);
     _pilesOpp = PileSet(deckOpp, this.rng);
@@ -212,6 +215,36 @@ class MatchEngine {
       _danar(opp: false, amount: r.damage);
     }
 
+    // Subrutinas anuladas por SIGKILL del rival no aplican sus efectos post-resolución.
+    final youSubsAnnulled = oppPlay!.subs.any((s) => s.sub?.id == 'sigkill');
+    final oppSubsAnnulled = subs.whereType<CardInstance>().any((s) => s.sub?.id == 'sigkill');
+    bool youPlayed(String id) =>
+        !youSubsAnnulled && subs.whereType<CardInstance>().any((s) => s.sub?.id == id);
+    bool oppPlayed(String id) => !oppSubsAnnulled && oppPlay!.subs.any((s) => s.sub?.id == id);
+
+    // PARCHE / PARCHE.Ω — cura al ganar; PARCHE además daña 1 extra al perder.
+    if (r.winner == Winner.you && (youPlayed('patch') || youPlayed('patch_pro'))) {
+      integrityYou = (integrityYou + 1).clamp(0, nucYou.integrity);
+      r.log.add('PARCHE (tú) → +1 de integridad');
+    } else if (r.winner == Winner.opp && youPlayed('patch')) {
+      integrityYou = (integrityYou - 1).clamp(0, nucYou.integrity);
+      r.log.add('PARCHE (tú) → −1 de integridad extra');
+    }
+    if (r.winner == Winner.opp && (oppPlayed('patch') || oppPlayed('patch_pro'))) {
+      integrityOpp = (integrityOpp + 1).clamp(0, nucOpp.integrity);
+    } else if (r.winner == Winner.you && oppPlayed('patch')) {
+      integrityOpp = (integrityOpp - 1).clamp(0, nucOpp.integrity);
+    }
+
+    // DESFRAG (al perdedor) / FORMATEO (solo si pierde el rival) → rebaraja la mano.
+    final youLost = r.winner == Winner.opp, oppLost = r.winner == Winner.you;
+    if (youPlayed('shuffle_loser') || oppPlayed('shuffle_loser')) {
+      if (youLost) _shuffleNextYou = true;
+      if (oppLost) _shuffleNextOpp = true;
+    }
+    if (youPlayed('shuffle_opp') && oppLost) _shuffleNextOpp = true;
+    if (oppPlayed('shuffle_opp') && youLost) _shuffleNextYou = true;
+
     if (r.winner == Winner.you &&
         nucYou.passiveId == PassiveId.inyeccion &&
         active!.type == CType.exploit) {
@@ -225,8 +258,10 @@ class MatchEngine {
     if (r.winner == Winner.you && active!.rut?.id == 'pl_emp') _empAgainstOpp = true;
     if (r.winner == Winner.opp && oppPlay!.rutina.rut?.id == 'pl_emp') _empAgainstYou = true;
 
-    _ramPenYou = active!.rut?.id == 'xp_zero' ? 1 : 0;
-    _ramPenOpp = oppPlay!.rutina.rut?.id == 'xp_zero' ? 1 : 0;
+    // Variantes con coste: −1 RAM la próxima ronda (ZERO-DAY, EMP-BURST, IRON-WALL).
+    const ramPenRut = {'xp_zero', 'pl_emp', 'fw_iron'};
+    _ramPenYou = ramPenRut.contains(active!.rut?.id) ? 1 : 0;
+    _ramPenOpp = ramPenRut.contains(oppPlay!.rutina.rut?.id) ? 1 : 0;
 
     if (integrityYou <= 0 || integrityOpp <= 0) {
       gameOver = true;
@@ -292,6 +327,22 @@ class MatchEngine {
     if (_empAgainstOpp) {
       subOpp -= 1;
       _empAgainstOpp = false;
+    }
+
+    // DESFRAG/FORMATEO: el lado marcado descarta su mano entera y roba una nueva.
+    if (_shuffleNextYou) {
+      for (final c in List.of(handYou)) {
+        _pilesYou.discard(c);
+      }
+      handYou.clear();
+      _shuffleNextYou = false;
+    }
+    if (_shuffleNextOpp) {
+      for (final c in List.of(_handOpp)) {
+        _pilesOpp.discard(c);
+      }
+      _handOpp.clear();
+      _shuffleNextOpp = false;
     }
 
     _acquire(handYou, _pilesYou, 2, subYou.clamp(0, 4), isYou: true);

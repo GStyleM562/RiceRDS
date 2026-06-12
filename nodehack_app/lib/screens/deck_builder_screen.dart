@@ -15,7 +15,18 @@ class DeckBuilderScreen extends StatefulWidget {
   final VoidCallback onBack;
   final void Function(Deck) onSave;
   final void Function(CardInstance) onInspect;
-  const DeckBuilderScreen({super.key, required this.initial, required this.onBack, required this.onSave, required this.onInspect});
+  /// ¿La carta está bloqueada en multijugador? (y cuántas partidas faltan).
+  final bool Function(String id)? cardLocked;
+  final int Function(String id)? gamesLeft;
+  const DeckBuilderScreen({
+    super.key,
+    required this.initial,
+    required this.onBack,
+    required this.onSave,
+    required this.onInspect,
+    this.cardLocked,
+    this.gamesLeft,
+  });
 
   @override
   State<DeckBuilderScreen> createState() => _DeckBuilderScreenState();
@@ -180,39 +191,53 @@ class _DeckBuilderScreenState extends State<DeckBuilderScreen> {
 
   Widget _row(CardInstance inst, String name, String txt, String meta, Rareza rar, String id, Color metaColor) {
     final c = (rutTab ? d.rut : d.sub)[id] ?? 0;
-    return Container(
-      margin: const EdgeInsets.only(bottom: 9),
-      padding: const EdgeInsets.all(9),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(9),
-        color: NH.a(const Color(0xFF090C12), .6),
-        border: Border.all(color: c > 0 ? const Color(0xFF243247) : const Color(0xFF151C28)),
-      ),
-      child: Row(children: [
-        GestureDetector(
-          onTap: () => widget.onInspect(inst),
-          child: ClipRRect(borderRadius: BorderRadius.circular(4), child: CardView(card: inst, width: 50, animate: false)),
+    final locked = widget.cardLocked?.call(id) ?? false;
+    return Opacity(
+      opacity: locked ? .55 : 1,
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 9),
+        padding: const EdgeInsets.all(9),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(9),
+          color: NH.a(const Color(0xFF090C12), .6),
+          border: Border.all(color: locked ? NH.a(NH.xp, .4) : (c > 0 ? const Color(0xFF243247) : const Color(0xFF151C28))),
         ),
-        const SizedBox(width: 12),
-        Expanded(
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            Text(name, style: NH.disp(size: 14, weight: FontWeight.w600, color: const Color(0xFFEAF1FB))),
-            const SizedBox(height: 2),
-            Text(txt, style: NH.mono(size: 9, color: NH.dim, height: 1.4)),
-            const SizedBox(height: 4),
-            Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
-              Text(meta, style: NH.mono(size: 8, color: metaColor, spacing: .6)),
-              Text(rar.label, style: NH.mono(size: 8, color: NH.dim2, spacing: .6)),
+        child: Row(children: [
+          GestureDetector(
+            onTap: () => widget.onInspect(inst),
+            child: ClipRRect(borderRadius: BorderRadius.circular(4), child: CardView(card: inst, width: 50, animate: false)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Text(name, style: NH.disp(size: 14, weight: FontWeight.w600, color: const Color(0xFFEAF1FB))),
+              const SizedBox(height: 2),
+              Text(txt, style: NH.mono(size: 9, color: NH.dim, height: 1.4)),
+              const SizedBox(height: 4),
+              Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
+                Text(meta, style: NH.mono(size: 8, color: metaColor, spacing: .6)),
+                Text(rar.label, style: NH.mono(size: 8, color: NH.dim2, spacing: .6)),
+              ]),
             ]),
-          ]),
-        ),
-        const SizedBox(width: 8),
-        Column(children: [
-          _stepBtn('−', c > 0, () => inc(id, -1)),
-          Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text('$c', style: NH.mono(size: 14, weight: FontWeight.w700, color: const Color(0xFFEAF1FB)))),
-          _stepBtn('+', c < maxCopies && total < target, () => inc(id, 1)),
+          ),
+          const SizedBox(width: 8),
+          if (locked)
+            SizedBox(
+              width: 34,
+              child: Column(children: [
+                const Text('🔒', style: TextStyle(fontSize: 14)),
+                const SizedBox(height: 3),
+                Text('${widget.gamesLeft?.call(id) ?? 0}p', style: NH.mono(size: 8, weight: FontWeight.w700, color: NH.xp)),
+              ]),
+            )
+          else
+            Column(children: [
+              _stepBtn('−', c > 0, () => inc(id, -1)),
+              Padding(padding: const EdgeInsets.symmetric(vertical: 3), child: Text('$c', style: NH.mono(size: 14, weight: FontWeight.w700, color: const Color(0xFFEAF1FB)))),
+              _stepBtn('+', c < maxCopies && total < target, () => inc(id, 1)),
+            ]),
         ]),
-      ]),
+      ),
     );
   }
 

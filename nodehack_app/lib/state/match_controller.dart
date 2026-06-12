@@ -47,6 +47,8 @@ class MatchController extends ChangeNotifier implements MatchView {
     Deck? deckOpp,
     NucleoDef? nucOpp,
     String oppName = 'proc_0x4F',
+    int integrityYouBonus = 0, // modificadores del modo Historia
+    int integrityOppBonus = 0,
     int? seed,
   })  : _oppName = oppName,
         engine = MatchEngine(
@@ -54,6 +56,8 @@ class MatchController extends ChangeNotifier implements MatchView {
           nucOpp: nucOpp ?? kNucleos[Random(seed).nextInt(kNucleos.length)],
           deckYou: deckYou,
           deckOpp: deckOpp ?? Deck.starter(),
+          integrityYouBonus: integrityYouBonus,
+          integrityOppBonus: integrityOppBonus,
           rng: seed != null ? Random(seed) : Random(),
         );
 

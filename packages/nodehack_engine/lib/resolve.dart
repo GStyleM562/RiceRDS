@@ -198,11 +198,12 @@ RoundResult resolve(Play you, Play opp) {
     oC += 4;
     log.add('OVERCLOCK (rival) → +4 a los Ciclos del rival');
   }
-  if (_has(you, 'throttle') && !annulYou && opp.rutina.type != CType.nul) {
+  // IRON-WALL (fw_iron) es inmune a THROTTLE (no le bajan los Ciclos).
+  if (_has(you, 'throttle') && !annulYou && opp.rutina.type != CType.nul && opp.rutina.rut?.id != 'fw_iron') {
     oC -= 4;
     log.add('THROTTLE (tú) → −4 a los Ciclos del rival');
   }
-  if (_has(opp, 'throttle') && !annulOpp && you.rutina.type != CType.nul) {
+  if (_has(opp, 'throttle') && !annulOpp && you.rutina.type != CType.nul && you.rutina.rut?.id != 'fw_iron') {
     yC -= 4;
     log.add('THROTTLE (rival) → −4 a tus Ciclos');
   }
@@ -217,18 +218,43 @@ RoundResult resolve(Play you, Play opp) {
     log.add('CUARENTENA (rival) → fuerza el EMPATE');
   }
 
+  // INVERSIÓN (triángulo) y PARADOJA (espejo) — toggles por nº IMPAR de la carta no
+  // anulada (suma de ambos lados), para que el resultado sea idéntico desde las dos
+  // perspectivas (simetría flipWinner). Se registran como efecto de cada lado.
+  var invTri = 0, invCyc = 0;
+  if (_has(you, 'invert_tri') && !annulYou) {
+    invTri++;
+    log.add('INVERSIÓN (tú) → el triángulo se invierte esta ronda');
+  }
+  if (_has(opp, 'invert_tri') && !annulOpp) {
+    invTri++;
+    log.add('INVERSIÓN (rival) → el triángulo se invierte esta ronda');
+  }
+  if (_has(you, 'invert_cyc') && !annulYou) {
+    invCyc++;
+    log.add('PARADOJA (tú) → en espejo gana quien tenga MENOS Ciclos');
+  }
+  if (_has(opp, 'invert_cyc') && !annulOpp) {
+    invCyc++;
+    log.add('PARADOJA (rival) → en espejo gana quien tenga MENOS Ciclos');
+  }
+  final invertTri = invTri.isOdd;
+  final invertCyc = invCyc.isOdd;
+
   Winner winner;
   if (forceDraw) {
     winner = Winner.draw;
   } else if (yT == oT) {
-    if (yC > oC) {
+    final youBetter = invertCyc ? yC < oC : yC > oC;
+    final oppBetter = invertCyc ? oC < yC : oC > yC;
+    if (youBetter) {
       winner = Winner.you;
-    } else if (oC > yC) {
+    } else if (oppBetter) {
       winner = Winner.opp;
     } else {
       winner = Winner.draw;
     }
-    log.add('Espejo ${yT.label} → deciden los Ciclos (tú $yC vs $oC rival)');
+    log.add('Espejo ${yT.label} → ${invertCyc ? "PARADOJA: gana MENOS Ciclos" : "deciden los Ciclos"} (tú $yC vs $oC rival)');
   } else if (yT == CType.nul) {
     winner = Winner.you;
     log.add('NULL (tú) toma ventaja');
@@ -236,11 +262,15 @@ RoundResult resolve(Play you, Play opp) {
     winner = Winner.opp;
     log.add('NULL (rival) toma ventaja');
   } else if (yT.venceA(oT)) {
-    winner = Winner.you;
-    log.add('Tu ${yT.label} vence al ${oT.label} del rival');
+    winner = invertTri ? Winner.opp : Winner.you;
+    log.add(invertTri
+        ? 'INVERSIÓN → el ${oT.label} del rival se impone a tu ${yT.label}'
+        : 'Tu ${yT.label} vence al ${oT.label} del rival');
   } else {
-    winner = Winner.opp;
-    log.add('El ${oT.label} del rival vence a tu ${yT.label}');
+    winner = invertTri ? Winner.you : Winner.opp;
+    log.add(invertTri
+        ? 'INVERSIÓN → tu ${yT.label} se impone al ${oT.label} del rival'
+        : 'El ${oT.label} del rival vence a tu ${yT.label}');
   }
 
   // Daño: 1 base; FORK-BOMB del ganador (no anulada) suma +1.
