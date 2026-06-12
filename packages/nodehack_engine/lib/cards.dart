@@ -108,7 +108,14 @@ const List<SubDef> kSubrutinas = [
   SubDef('invert_cyc', 'PARADOJA', 2, Rareza.e, 'cyc.flip', 'Esta ronda, en un ESPEJO gana quien tenga MENOS Ciclos.'),
   SubDef('shuffle_loser', 'DESFRAG', 2, Rareza.r, 'frag.any', 'Quien PIERDA la ronda rebaraja su mano (la descarta y roba de nuevo).'),
   SubDef('shuffle_opp', 'FORMATEO', 3, Rareza.e, 'fmt.rival', 'Si el RIVAL pierde la ronda, rebaraja su mano. (A ti no te afecta.)'),
+  // — Cartas SOLO de Historia (poder extra; el modo es más difícil/injusto) —
+  SubDef('st_overdrive', 'SOBRECARGA', 2, Rareza.e, 'sys.overdrive', '+6 Ciclos a tu Rutina. (Solo Historia.)'),
+  SubDef('st_purge', 'CONTRAVIRUS', 2, Rareza.e, 'anti.virus', 'Anula TODAS las Subrutinas del rival esta ronda. (Solo Historia.)'),
+  SubDef('st_bastion', 'BASTIÓN', 2, Rareza.e, 'wall.absolute', 'Si PIERDES la ronda, no pierdes integridad (te atrincheras). (Solo Historia.)'),
 ];
+
+/// Cartas que SOLO existen en el modo Historia (excluidas del Versus/multijugador).
+const Set<String> kStoryOnlyCardIds = {'st_overdrive', 'st_purge', 'st_bastion'};
 
 final Map<String, RutinaDef> kRutById = {for (final r in kRutinas) r.id: r};
 final Map<String, SubDef> kSubById = {for (final s in kSubrutinas) s.id: s};

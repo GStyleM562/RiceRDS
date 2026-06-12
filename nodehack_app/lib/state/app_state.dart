@@ -54,6 +54,7 @@ class AppState extends ChangeNotifier {
   /// existían) siempre; las nuevas, jugando [kCardUnlockGames] partidas (o por
   /// anuncios, a futuro). Con [kUnlockAllForTesting] todas están abiertas para probar.
   bool isMultiplayerUnlocked(String cardId) {
+    if (kStoryOnlyCardIds.contains(cardId)) return false; // exclusivas de Historia
     if (kUnlockAllForTesting) return true;
     final req = kCardUnlockGames[cardId];
     if (req == null) return kAllCardIds.contains(cardId); // base / desconocida

@@ -369,6 +369,10 @@ const List<FragmentDef> kFragments = [
       'Una puerta con tu firma, pero más vieja. Alguien ya estuvo aquí siendo tú.',
       'CRUZAR', 'credits:+4',
       'RETROCEDER', 'none'),
+  FragmentDef('eco_limpio',
+      'Un eco limpio cruza el ruido. Por un instante, te sientes menos… corrompido.',
+      'ABSORBERLO (−corrupción)', 'corrupt:-25',
+      'DEJARLO PASAR', 'none'),
 ];
 
 /// Evento especial de MUTACIÓN (cambia tu naturaleza). Se ofrece de vez en cuando.

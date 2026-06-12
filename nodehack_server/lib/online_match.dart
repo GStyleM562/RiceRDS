@@ -197,19 +197,21 @@ class OnlineMatch {
 
   /// Aplica el resultado canónico (perspectiva de p[0]) a integridad y pasivas.
   void _applyCanonical(RoundResult r) {
-    if (r.winner == Winner.you) {
-      _damage(1, r.damage); // p[1] recibe
-    } else if (r.winner == Winner.opp) {
-      _damage(0, r.damage); // p[0] recibe
-    }
-
-    // Subrutinas anuladas por SIGKILL del rival no aplican efectos post-resolución.
-    final p0Annulled = p[1].playSubs.any((s) => s.sub?.id == 'sigkill');
-    final p1Annulled = p[0].playSubs.any((s) => s.sub?.id == 'sigkill');
+    // Subrutinas anuladas por SIGKILL/CONTRAVIRUS del rival no aplican efectos.
+    bool annuls(Iterable<CardInstance> s) => s.any((c) => c.sub?.id == 'sigkill' || c.sub?.id == 'st_purge');
+    final p0Annulled = annuls(p[1].playSubs);
+    final p1Annulled = annuls(p[0].playSubs);
     bool p0(String id) => !p0Annulled && p[0].playSubs.any((s) => s.sub?.id == id);
     bool p1(String id) => !p1Annulled && p[1].playSubs.any((s) => s.sub?.id == id);
     void heal(int i, int d) => p[i].integrity = (p[i].integrity + d).clamp(0, p[i].nuc.integrity);
     final p0Won = r.winner == Winner.you, p1Won = r.winner == Winner.opp;
+
+    // Daño base — BASTIÓN del perdedor lo anula.
+    if (r.winner == Winner.you) {
+      if (!p1('st_bastion')) _damage(1, r.damage); // p[1] perdió
+    } else if (r.winner == Winner.opp) {
+      if (!p0('st_bastion')) _damage(0, r.damage); // p[0] perdió
+    }
 
     // PARCHE / PARCHE.Ω — cura al ganar; PARCHE además daña 1 extra al perder.
     if (p0Won && (p0('patch') || p0('patch_pro'))) {

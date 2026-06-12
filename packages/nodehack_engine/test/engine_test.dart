@@ -423,5 +423,32 @@ void main() {
       expect(e.handYou.any((c) => !c.isSub), isTrue); // ≥1 Rutina
       expect(e.handYou.length, lessThanOrEqualTo(kMaxHand));
     });
+
+    test('SOBRECARGA (Historia): +6 Ciclos gana el espejo', () {
+      final r = resolve(_p(_rut('fw_base'), [_sub('st_overdrive')]), _p(_rut('fw_base')));
+      expect(r.youCiclos, 11);
+      expect(r.winner, Winner.you);
+    });
+
+    test('CONTRAVIRUS (Historia): anula las subrutinas del rival', () {
+      // El rival jugaría CUARENTENA (empate), pero CONTRAVIRUS la purga.
+      final r = resolve(
+        _p(_rut('fw_base'), [_sub('st_purge')]),
+        _p(_rut('xp_base'), [_sub('cuarentena')]),
+      );
+      expect(r.winner, Winner.you); // CORTAFUEGOS vence a EXPLOIT (cuarentena anulada)
+    });
+
+    test('BASTIÓN (Historia): no pierdes integridad al perder la ronda', () {
+      final e = _engine('wraith', 'sentinel', 7); // WRAITH no tiene BLINDAJE
+      e.integrityYou = 3;
+      e.active = _rut('xp_base');
+      e.subs[0] = _sub('st_bastion');
+      e.oppPlay = _p(_rut('fw_base')); // firewall vence exploit → pierdes
+      e.result = resolve(Play(e.active!, [e.subs[0]!]), e.oppPlay!);
+      e.applyResult();
+      expect(e.result!.winner, Winner.opp);
+      expect(e.integrityYou, 3); // BASTIÓN te atrincheró: 0 daño
+    });
   });
 }

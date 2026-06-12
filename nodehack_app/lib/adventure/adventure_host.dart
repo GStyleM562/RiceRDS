@@ -217,12 +217,53 @@ class AdventureHost extends StatelessWidget {
       const SizedBox(height: 16),
       Expanded(
         child: ListView(
-          children: [for (final o in ctrl.shopOffers) _shopRow(o)],
+          children: [
+            if (st.corruption > 0) _purgeRow(),
+            for (final o in ctrl.shopOffers) _shopRow(o),
+          ],
         ),
       ),
       _wideBtn('SALIR DE LA CUARENTENA', NH.fw, ctrl.leaveShop),
       const SizedBox(height: 18),
     ]);
+  }
+
+  // Servicio de PURGA: gasta créditos para bajar la corrupción de la run.
+  Widget _purgeRow() {
+    final can = ctrl.canPurge;
+    return Container(
+      margin: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.all(10),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(10),
+        color: NH.a(NH.xp, .06),
+        border: Border.all(color: NH.a(NH.xp, .5)),
+      ),
+      child: Row(children: [
+        const Text('🧪', style: TextStyle(fontSize: 24)),
+        const SizedBox(width: 12),
+        Expanded(
+          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+            Text('PURGAR CORRUPCIÓN', style: NH.disp(size: 13, weight: FontWeight.w700, color: const Color(0xFFEAF1FB), spacing: .5)),
+            const SizedBox(height: 3),
+            Text('−25 corrupción · ◆ ${ctrl.purgeCost}',
+                style: NH.mono(size: 11, weight: FontWeight.w700, color: NH.amber)),
+          ]),
+        ),
+        GestureDetector(
+          onTap: can ? () => ctrl.buyPurge() : null,
+          child: Container(
+            padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              border: Border.all(color: can ? NH.xp : NH.dim2),
+              color: can ? NH.a(NH.xp, .1) : null,
+            ),
+            child: Text('PURGAR', style: NH.mono(size: 10, weight: FontWeight.w700, color: can ? NH.xp : NH.dim2, spacing: 1)),
+          ),
+        ),
+      ]),
+    );
   }
 
   Widget _shopRow(ShopOffer o) {

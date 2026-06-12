@@ -209,18 +209,28 @@ class MatchEngine {
     final r = result;
     if (r == null) return;
 
-    if (r.winner == Winner.you) {
-      _danar(opp: true, amount: r.damage);
-    } else if (r.winner == Winner.opp) {
-      _danar(opp: false, amount: r.damage);
-    }
-
-    // Subrutinas anuladas por SIGKILL del rival no aplican sus efectos post-resolución.
-    final youSubsAnnulled = oppPlay!.subs.any((s) => s.sub?.id == 'sigkill');
-    final oppSubsAnnulled = subs.whereType<CardInstance>().any((s) => s.sub?.id == 'sigkill');
+    // Subrutinas anuladas por SIGKILL/CONTRAVIRUS del rival no aplican sus efectos.
+    bool annuls(Iterable<CardInstance> s) => s.any((c) => c.sub?.id == 'sigkill' || c.sub?.id == 'st_purge');
+    final youSubsAnnulled = annuls(oppPlay!.subs);
+    final oppSubsAnnulled = annuls(subs.whereType<CardInstance>());
     bool youPlayed(String id) =>
         !youSubsAnnulled && subs.whereType<CardInstance>().any((s) => s.sub?.id == id);
     bool oppPlayed(String id) => !oppSubsAnnulled && oppPlay!.subs.any((s) => s.sub?.id == id);
+
+    // Daño base — BASTIÓN del perdedor lo anula (te atrincheras).
+    if (r.winner == Winner.you) {
+      if (oppPlayed('st_bastion')) {
+        r.log.add('BASTIÓN (rival) → se atrinchera: 0 daño');
+      } else {
+        _danar(opp: true, amount: r.damage);
+      }
+    } else if (r.winner == Winner.opp) {
+      if (youPlayed('st_bastion')) {
+        r.log.add('BASTIÓN (tú) → te atrincheras: 0 daño');
+      } else {
+        _danar(opp: false, amount: r.damage);
+      }
+    }
 
     // PARCHE / PARCHE.Ω — cura al ganar; PARCHE además daña 1 extra al perder.
     if (r.winner == Winner.you && (youPlayed('patch') || youPlayed('patch_pro'))) {

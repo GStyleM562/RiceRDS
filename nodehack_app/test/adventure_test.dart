@@ -14,6 +14,7 @@ import 'package:nodehack_app/adventure/codex_screen.dart';
 import 'package:nodehack_app/adventure/adventure_state.dart';
 import 'package:nodehack_app/adventure/ending_screen.dart';
 import 'package:nodehack_app/screens/settings_screen.dart';
+import 'package:nodehack_app/state/app_state.dart';
 
 Future<void> _pump(WidgetTester t, Widget child) async {
   await t.binding.setSurfaceSize(const Size(390, 844));
@@ -62,6 +63,7 @@ void main() {
     final st = AdventureState();
     st.startNewRun();
     st.runPoints = 10; // umbral del 1er jefe
+    st.firedEvents.addAll(kMiniEventPoints); // sin mini-eventos pendientes
     final c = AdventureController(st, seed: 1);
     expect(c.step, AdvStep.bossIntro);
     expect(c.isBoss, isTrue);
@@ -76,6 +78,7 @@ void main() {
     final st = AdventureState();
     st.startNewRun();
     st.runPoints = 10;
+    st.firedEvents.addAll(kMiniEventPoints);
     var c = AdventureController(st, seed: 1);
     c.startCombat();
     c.onCombatEnd(true);
@@ -232,6 +235,26 @@ void main() {
     expect(t.takeException(), isNull);
     await _pump(t, EndingScreen(view: endingViewFor(kSecretEndingId), onClose: () {}));
     expect(t.takeException(), isNull);
+  });
+
+  test('Cartas de Historia: excluidas del multijugador', () {
+    final app = AppState();
+    expect(app.isMultiplayerUnlocked('st_overdrive'), isFalse);
+    expect(app.isMultiplayerUnlocked('st_purge'), isFalse);
+    expect(app.isMultiplayerUnlocked('overclock'), isTrue); // base, sí
+  });
+
+  test('Purga de corrupción: gasta créditos y baja la corrupción', () {
+    final st = AdventureState();
+    st.startNewRun();
+    st.corruption = 50;
+    st.addCredits(20);
+    final c = AdventureController(st, seed: 1);
+    expect(c.canPurge, isTrue);
+    final creditsBefore = st.credits;
+    expect(c.buyPurge(), isTrue);
+    expect(st.corruption, 25); // −25
+    expect(st.credits, creditsBefore - c.purgeCost);
   });
 
   test('Perder un combate NO da créditos ni victorias', () {

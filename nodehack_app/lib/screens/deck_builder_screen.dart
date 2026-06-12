@@ -112,7 +112,10 @@ class _DeckBuilderScreenState extends State<DeckBuilderScreen> {
               if (rutTab)
                 for (final r in kRutinas) _row(CardInstance.rutina(r), r.name, r.txt, '${r.type.label} · ${r.ciclos} CYC', r.rar, r.id, Color(r.type.color))
               else
-                for (final s in kSubrutinas) _row(CardInstance.subrutina(s), s.name, s.txt, 'RAM ${s.ram}', s.rar, s.id, NH.ink2),
+                // Las cartas SOLO de Historia no aparecen en el Versus.
+                for (final s in kSubrutinas)
+                  if (!kStoryOnlyCardIds.contains(s.id))
+                    _row(CardInstance.subrutina(s), s.name, s.txt, 'RAM ${s.ram}', s.rar, s.id, NH.ink2),
             ],
           ),
         ),

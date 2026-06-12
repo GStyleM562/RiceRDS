@@ -115,14 +115,22 @@ RoundResult resolve(Play you, Play opp) {
   // El log registra CADA efecto por AMBOS lados — "(tú)" lo jugaste tú, "(rival)"
   // lo jugó el rival — para que se entienda cómo quedó la jugada de los dos.
 
-  // SIGKILL — anula TODAS las subrutinas del otro.
+  // SIGKILL / CONTRAVIRUS (st_purge) — anulan TODAS las subrutinas del otro.
   if (_has(you, 'sigkill')) {
     annulOpp = true;
     log.add('SIGKILL (tú) → anulas las subrutinas del rival');
   }
+  if (_has(you, 'st_purge')) {
+    annulOpp = true;
+    log.add('CONTRAVIRUS (tú) → purgas las subrutinas del rival');
+  }
   if (_has(opp, 'sigkill')) {
     annulYou = true;
     log.add('SIGKILL (rival) → anula tus subrutinas');
+  }
+  if (_has(opp, 'st_purge')) {
+    annulYou = true;
+    log.add('CONTRAVIRUS (rival) → purga tus subrutinas');
   }
 
   // MIRROR — copia el tipo de la Rutina del otro. Recalcula los Ciclos al nivel
@@ -189,7 +197,7 @@ RoundResult resolve(Play you, Play opp) {
     log.add('AVANCE (rival) → mueve su Rutina a ${oT.label}');
   }
 
-  // OVERCLOCK / THROTTLE (no afectan a NULL).
+  // OVERCLOCK / SOBRECARGA / THROTTLE (no afectan a NULL).
   if (_has(you, 'overclock') && !annulYou && you.rutina.type != CType.nul) {
     yC += 4;
     log.add('OVERCLOCK (tú) → +4 a tus Ciclos');
@@ -197,6 +205,14 @@ RoundResult resolve(Play you, Play opp) {
   if (_has(opp, 'overclock') && !annulOpp && opp.rutina.type != CType.nul) {
     oC += 4;
     log.add('OVERCLOCK (rival) → +4 a los Ciclos del rival');
+  }
+  if (_has(you, 'st_overdrive') && !annulYou && you.rutina.type != CType.nul) {
+    yC += 6;
+    log.add('SOBRECARGA (tú) → +6 a tus Ciclos');
+  }
+  if (_has(opp, 'st_overdrive') && !annulOpp && opp.rutina.type != CType.nul) {
+    oC += 6;
+    log.add('SOBRECARGA (rival) → +6 a los Ciclos del rival');
   }
   // IRON-WALL (fw_iron) es inmune a THROTTLE (no le bajan los Ciclos).
   if (_has(you, 'throttle') && !annulYou && opp.rutina.type != CType.nul && opp.rutina.rut?.id != 'fw_iron') {

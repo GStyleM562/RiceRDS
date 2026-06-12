@@ -61,21 +61,22 @@ class AdventureController extends ChangeNotifier {
     _decideNext();
   }
 
-  // ── Decisión del siguiente nodo (run-points / jefes / mini-eventos) ──
+  // ── Decisión del siguiente nodo (run-points / mini-eventos / jefes) ──
   void _decideNext() {
     enemy = null;
     isBoss = false;
-    // 1) Jefe en run-points 10/20/30/40/50 (si no hay cooldown).
+    // 1) Mini-evento: tu rol "habla" en 5/10/.../45 (1 vez por umbral). Va ANTES
+    //    del jefe para que, en 10/20/…, el rol reflexione y luego enfrentes al jefe.
+    final ev = st.pendingEvent();
+    if (ev != null) {
+      _toEvent(ev);
+      return;
+    }
+    // 2) Jefe en run-points 10/20/30/40/50 (si no hay cooldown).
     if (st.bossCooldown == 0 &&
         st.bossesDone < kBossCount &&
         st.runPoints >= (st.bossesDone + 1) * kCheckpointStep) {
       _toBossIntro();
-      return;
-    }
-    // 2) Mini-evento: tu rol "habla" en 5/10/.../45 (1 vez por umbral).
-    final ev = st.pendingEvent();
-    if (ev != null) {
-      _toEvent(ev);
       return;
     }
     // 3) Elección de 3 caminos.
@@ -276,6 +277,8 @@ class AdventureController extends ChangeNotifier {
   void _applyEffect(String effect) {
     if (effect.startsWith('credits:+')) {
       st.addCredits(int.tryParse(effect.substring('credits:+'.length)) ?? 0);
+    } else if (effect.startsWith('corrupt:-')) {
+      st.addCorruption(-(int.tryParse(effect.substring('corrupt:-'.length)) ?? 0));
     }
     // 'none' u otros efectos futuros → sin acción.
   }
@@ -319,4 +322,14 @@ class AdventureController extends ChangeNotifier {
 
   /// Salir de la tienda continúa la run.
   void leaveShop() => _decideNext();
+
+  // ── Purga de corrupción (servicio de la tienda) ──
+  int get purgeCost => 10;
+  bool get canPurge => st.corruption > 0 && st.credits >= purgeCost;
+  bool buyPurge() {
+    if (st.corruption <= 0 || !st.spend(purgeCost)) return false;
+    st.addCorruption(-25);
+    notifyListeners();
+    return true;
+  }
 }
