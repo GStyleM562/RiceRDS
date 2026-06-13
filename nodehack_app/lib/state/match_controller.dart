@@ -86,6 +86,12 @@ class MatchController extends ChangeNotifier implements MatchView {
   @override
   int get integrityOpp => engine.integrityOpp;
   @override
+  int get integrityMaxYou => engine.integrityMaxYou;
+  @override
+  int get integrityMaxOpp => engine.integrityMaxOpp;
+  @override
+  String? get notice => null; // sin avisos en partida local
+  @override
   int get ramMax => engine.ramMax;
   @override
   int get ramLeft => engine.ramLeft;

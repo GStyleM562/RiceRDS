@@ -197,6 +197,23 @@ class Room {
     manager.scheduleClose(this);
   }
 
+  /// Abandono EXPLÍCITO (el jugador se rinde / sale del duelo): el rival gana
+  /// AL INSTANTE, sin esperar la ventana de reconexión — esa es solo para caídas.
+  void onLeave(int slot) {
+    if (conns[slot] == null) return;
+    conns[slot] = null;
+    if (ended) {
+      manager.scheduleClose(this);
+      return;
+    }
+    if (!started) {
+      if (conns[0] == null && conns[1] == null) manager.closeRoom(this);
+      return;
+    }
+    _reconnectTimer?.cancel();
+    _forfeit(slot);
+  }
+
   void onReconnect(Conn c, int slot) {
     if (ended) {
       _send0(c, S2C.error, {'message': 'la partida ya terminó'});
@@ -355,7 +372,7 @@ class Hub {
         final slot = c.slot;
         c.room = null;
         c.slot = -1;
-        room?.onDisconnect(slot);
+        room?.onLeave(slot); // rendición explícita → forfeit inmediato
       default:
         c.send(encodeMsg(S2C.error, {'message': 'tipo desconocido'}));
     }

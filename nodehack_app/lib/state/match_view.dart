@@ -68,6 +68,10 @@ abstract class MatchView implements Listenable {
   NucleoDef get nucOpp;
   int get integrityYou;
   int get integrityOpp;
+  // Máximos EFECTIVOS (base del núcleo ± modificadores de Historia): el HUD
+  // dibuja los pips contra estos y señala la diferencia con la base.
+  int get integrityMaxYou;
+  int get integrityMaxOpp;
 
   // RAM
   int get ramMax;
@@ -89,6 +93,10 @@ abstract class MatchView implements Listenable {
   // Daño / historial (alimentan animaciones)
   ({String side, int amount})? get hit;
   List<Winner> get history;
+
+  // Aviso transitorio sobre la mesa (online: rival desconectado, conexión
+  // perdida…). null = sin aviso.
+  String? get notice;
 
   // Fin de partida
   bool get gameOver;

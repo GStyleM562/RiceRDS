@@ -27,7 +27,7 @@ import 'screens/settings_screen.dart';
 import 'theme/tokens.dart';
 import 'tutorial/tutorial_match_controller.dart';
 import 'tutorial/tutorial_overlay.dart';
-import 'widgets/card_view.dart';
+import 'widgets/card_zoom_overlay.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -153,6 +153,7 @@ class _AppRootState extends State<AppRoot> {
       app.markTutorialBasicDone();
       _toMenu();
     });
+    app.markFirstPromptSeen();
     _tutorialOffered = true;
     _showTutChooser = false;
     _go(_Screen.tutorial);
@@ -164,6 +165,7 @@ class _AppRootState extends State<AppRoot> {
       app.markTutorialAdvancedDone();
       _toMenu();
     });
+    app.markFirstPromptSeen();
     _tutorialOffered = true;
     _showTutChooser = false;
     _go(_Screen.tutorial);
@@ -252,7 +254,7 @@ class _AppRootState extends State<AppRoot> {
           child: Stack(
             children: [
               ListenableBuilder(listenable: app, builder: (context, _) => _buildScreen()),
-              if (screen == _Screen.menu && app.introSeen && !app.tutorialBasicDone && !_tutorialOffered)
+              if (screen == _Screen.menu && app.introSeen && !app.tutorialBasicDone && !app.firstPromptSeen && !_tutorialOffered)
                 _firstTimePrompt(),
               if (_showTutChooser && screen == _Screen.menu) _tutChooser(),
               if (_showRoutes && screen == _Screen.menu) _routesOverlay(),
@@ -454,7 +456,10 @@ class _AppRootState extends State<AppRoot> {
                   ),
                   const SizedBox(height: 10),
                   GestureDetector(
-                    onTap: () => setState(() => _tutorialOffered = true),
+                    onTap: () {
+                      app.markFirstPromptSeen(); // no vuelve a ofrecerse (persistente)
+                      setState(() => _tutorialOffered = true);
+                    },
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 10),
                       alignment: Alignment.center,
@@ -468,24 +473,8 @@ class _AppRootState extends State<AppRoot> {
         ),
       );
 
-  Widget _zoomOverlay(CardInstance card) => Positioned.fill(
-        child: GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: _hideZoom,
-          child: Container(
-            color: NH.a(Colors.black, .85),
-            alignment: Alignment.center,
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                CardView(card: card, width: 300),
-                const SizedBox(height: 16),
-                Text('toca para cerrar', style: NH.mono(size: 11, color: NH.dim, spacing: 2)),
-              ],
-            ),
-          ),
-        ),
-      );
+  Widget _zoomOverlay(CardInstance card) =>
+      Positioned.fill(child: CardZoomOverlay(card: card, onClose: _hideZoom));
 
   Widget _buildScreen() {
     switch (screen) {

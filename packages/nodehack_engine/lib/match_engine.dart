@@ -25,6 +25,11 @@ class MatchEngine {
   int round = 1;
   int integrityYou;
   int integrityOpp;
+  // Máximos EFECTIVOS (base del núcleo ± modificadores de Historia). El daño y
+  // la curación clampan contra estos, no contra la base — un jefe blindado no
+  // pierde su bonus al primer golpe ni un núcleo debilitado se cura de más.
+  final int integrityMaxYou;
+  final int integrityMaxOpp;
 
   // Mazo de robo de cada jugador (robo + descarte que se rebaraja reciclando).
   late final PileSet _pilesYou;
@@ -62,6 +67,8 @@ class MatchEngine {
     Random? rng,
   })  : integrityYou = (nucYou.integrity + integrityYouBonus).clamp(1, 99),
         integrityOpp = (nucOpp.integrity + integrityOppBonus).clamp(1, 99),
+        integrityMaxYou = (nucYou.integrity + integrityYouBonus).clamp(1, 99),
+        integrityMaxOpp = (nucOpp.integrity + integrityOppBonus).clamp(1, 99),
         rng = rng ?? Random() {
     _pilesYou = PileSet(deckYou, this.rng);
     _pilesOpp = PileSet(deckOpp, this.rng);
@@ -234,16 +241,16 @@ class MatchEngine {
 
     // PARCHE / PARCHE.Ω — cura al ganar; PARCHE además daña 1 extra al perder.
     if (r.winner == Winner.you && (youPlayed('patch') || youPlayed('patch_pro'))) {
-      integrityYou = (integrityYou + 1).clamp(0, nucYou.integrity);
+      integrityYou = (integrityYou + 1).clamp(0, integrityMaxYou);
       r.log.add('PARCHE (tú) → +1 de integridad');
     } else if (r.winner == Winner.opp && youPlayed('patch')) {
-      integrityYou = (integrityYou - 1).clamp(0, nucYou.integrity);
+      integrityYou = (integrityYou - 1).clamp(0, integrityMaxYou);
       r.log.add('PARCHE (tú) → −1 de integridad extra');
     }
     if (r.winner == Winner.opp && (oppPlayed('patch') || oppPlayed('patch_pro'))) {
-      integrityOpp = (integrityOpp + 1).clamp(0, nucOpp.integrity);
+      integrityOpp = (integrityOpp + 1).clamp(0, integrityMaxOpp);
     } else if (r.winner == Winner.you && oppPlayed('patch')) {
-      integrityOpp = (integrityOpp - 1).clamp(0, nucOpp.integrity);
+      integrityOpp = (integrityOpp - 1).clamp(0, integrityMaxOpp);
     }
 
     // DESFRAG (al perdedor) / FORMATEO (solo si pierde el rival) → rebaraja la mano.
@@ -287,14 +294,14 @@ class MatchEngine {
         result?.log.add('BLINDAJE (rival) → anula el daño');
         return;
       }
-      integrityOpp = (integrityOpp - amount).clamp(0, nucOpp.integrity);
+      integrityOpp = (integrityOpp - amount).clamp(0, integrityMaxOpp);
     } else {
       if (nucYou.passiveId == PassiveId.blindaje && !_sentinelUsedYou) {
         _sentinelUsedYou = true;
         result?.log.add('BLINDAJE (tú) → anula el daño');
         return;
       }
-      integrityYou = (integrityYou - amount).clamp(0, nucYou.integrity);
+      integrityYou = (integrityYou - amount).clamp(0, integrityMaxYou);
     }
   }
 

@@ -221,6 +221,12 @@ class TutorialMatchController extends ChangeNotifier implements MatchView {
   @override
   int get integrityOpp => _intOpp;
   @override
+  int get integrityMaxYou => _nucYou.integrity;
+  @override
+  int get integrityMaxOpp => _nucOpp.integrity;
+  @override
+  String? get notice => null;
+  @override
   int get ramMax => _nucYou.ram;
   @override
   int get ramLeft => _nucYou.ram - _subsList.whereType<CardInstance>().fold(0, (a, s) => a + s.ram);

@@ -36,9 +36,17 @@ class _MatchScreenState extends State<MatchScreen> {
   final _rootKey = GlobalKey();
   final _slotKeys = {'sub0': GlobalKey(), 'active': GlobalKey(), 'sub1': GlobalKey()};
   final Set<String> _seenHand = {}; // para animar solo las cartas nuevas (handDraw)
+  List<CardInstance> _lastHand = const []; // mano anterior (detecta robos/rebarajeos)
+  Set<String> _lastSlotUids = {}; // cartas que estaban en slots (no re-animan al volver)
+  List<CardInstance> _handGhosts = const []; // cartas desmaterializándose (rebarajeo)
+  int _ghostSeq = 0;
+  Timer? _ghostTimer;
   _Drag? _drag;
   bool _dragActive = false; // el arrastre empieza tras mover el dedo (slop)
   String? _hover;
+  String? _dropRipple; // slot donde acaba de caer una carta (onda)
+  int _dropRippleSeq = 0; // re-dispara la onda al re-soltar en el mismo slot
+  Color _dropRippleColor = NH.pl;
   bool _confirmExit = false; // overlay "¿RENDIRSE?"
   bool _warnedLow = false; // aviso de "1 de vida" ya sonó esta partida
 
@@ -64,6 +72,7 @@ class _MatchScreenState extends State<MatchScreen> {
     super.initState();
     _updateCombatMusic(); // combate normal o "peligro" según integridad
     _prevPhase = c.phase.id;
+    _lastHand = List.of(c.handYou);
     c.addListener(_onCtrl);
   }
 
@@ -87,12 +96,47 @@ class _MatchScreenState extends State<MatchScreen> {
   void dispose() {
     c.removeListener(_onCtrl);
     _execTimer?.cancel();
+    _ghostTimer?.cancel();
     AudioService.instance.playMusic(Music.menu); // al salir, vuelve la del menú
     super.dispose();
   }
 
+  // Diferencia la mano contra la anterior: detecta robos reales (materializan)
+  // y cartas que se fueron SIN pasar por un slot = rebarajeo (desmaterializan).
+  void _diffHand() {
+    final hand = c.handYou;
+    final slotUids = {
+      if (c.active != null) c.active!.uid,
+      if (c.subs[0] != null) c.subs[0]!.uid,
+      if (c.subs[1] != null) c.subs[1]!.uid,
+    };
+    final lastUids = {for (final h in _lastHand) h.uid};
+    final curUids = {for (final h in hand) h.uid};
+    // Robos reales (no vuelven de un slot): re-animan aunque sean recicladas.
+    for (final h in hand) {
+      if (!lastUids.contains(h.uid) && !_lastSlotUids.contains(h.uid)) _seenHand.remove(h.uid);
+    }
+    final reshuffled = [
+      for (final h in _lastHand)
+        if (!curUids.contains(h.uid) && !slotUids.contains(h.uid)) h
+    ];
+    _lastHand = List.of(hand);
+    _lastSlotUids = slotUids;
+    if (reshuffled.isEmpty) return;
+    for (final h in reshuffled) {
+      _seenHand.remove(h.uid);
+    }
+    _ghostSeq++;
+    _handGhosts = reshuffled;
+    _ghostTimer?.cancel();
+    _ghostTimer = Timer(const Duration(milliseconds: 720), () {
+      if (mounted) setState(() => _handGhosts = const []);
+    });
+  }
+
   // Detecta el paso a EJECUCIÓN para arrancar el secuenciador (y lo apaga al salir).
   void _onCtrl() {
+    _diffHand();
     final p = c.phase.id;
     if (p == _prevPhase) return;
     _prevPhase = p;
@@ -269,7 +313,13 @@ class _MatchScreenState extends State<MatchScreen> {
       } else if (target == 'sub1') {
         c.placeSub(d.card, 1);
       }
-      if (target != null) AudioService.instance.playSfx(Sfx.cardPlace);
+      if (target != null) {
+        AudioService.instance.playSfx(Sfx.cardPlace);
+        _dropRipple = target;
+        // Las subrutinas reportan CType.nul: usamos su gris (como en el zoom).
+        _dropRippleColor = d.card.isSub ? const Color(0xFF7D8AA0) : Color(d.card.type.color);
+        _dropRippleSeq++;
+      }
     } else {
       widget.onInspect(d.card); // toque (sin arrastrar) = ver carta en zoom
     }
@@ -285,6 +335,61 @@ class _MatchScreenState extends State<MatchScreen> {
   void _compile() {
     AudioService.instance.playSfx(Sfx.compile);
     c.compile();
+  }
+
+  // Banner de aviso sobre la mesa (rival desconectado / conexión perdida).
+  Widget _noticeBanner(String msg) {
+    return Positioned(
+      top: 86,
+      left: 20,
+      right: 20,
+      child: IgnorePointer(
+        child: OneShot(
+          key: ValueKey('notice$msg'),
+          duration: const Duration(milliseconds: 280),
+          builder: (_, t) => Opacity(
+            opacity: t,
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(7),
+                color: NH.a(const Color(0xFF06080D), .94),
+                border: Border.all(color: NH.amber),
+                boxShadow: [BoxShadow(color: NH.a(NH.amber, .3), blurRadius: 16)],
+              ),
+              child: Text('⚠ $msg',
+                  textAlign: TextAlign.center,
+                  style: NH.mono(size: 9.5, weight: FontWeight.w700, color: NH.amber, height: 1.4, spacing: .5)),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Viñeta global de "hubo daño en la mesa": bordes del color del lado golpeado.
+  Widget _hitVignette() {
+    final col = c.hit?.side == 'you' ? NH.xp : NH.pl;
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: OneShot(
+          key: ValueKey('vig${c.round}'),
+          duration: const Duration(milliseconds: 420),
+          builder: (_, t) {
+            final a = (t < .35 ? t / .35 : 1 - (t - .35) / .65).clamp(0.0, 1.0);
+            return DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  radius: 1.0,
+                  colors: [Colors.transparent, NH.a(col, .22 * a)],
+                  stops: const [.55, 1.0],
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
   }
 
   @override
@@ -319,14 +424,32 @@ class _MatchScreenState extends State<MatchScreen> {
                   const Spacer(),
                   HitEffects(active: c.hit?.side == 'you', child: _youZone()),
                 ]),
+                // Aviso transitorio (online: rival desconectado / conexión perdida).
+                if (c.notice != null) _noticeBanner(c.notice!),
                 // En RESULTADO con golpe: ilumina al ganador y le "descarga" al perdedor.
+                if (c.phase.id == 'resultado' && c.hit != null) _hitVignette(),
                 if (c.phase.id == 'resultado' && c.hit != null) _winnerGlow(),
                 if (c.phase.id == 'resultado' && c.hit != null) _dischargeFx(),
                 if (_drag != null && _dragActive)
                   Positioned(
                     left: _drag!.pos.dx - 45,
                     top: _drag!.pos.dy - 63,
-                    child: IgnorePointer(child: CardView(card: _drag!.card, width: 90, animate: false)),
+                    child: IgnorePointer(
+                      child: OneShot(
+                        key: ValueKey('ghost${_drag!.card.uid}'),
+                        duration: const Duration(milliseconds: 130),
+                        builder: (_, t) => Transform.scale(
+                          scale: 1.0 + 0.12 * t,
+                          child: Container(
+                            decoration: BoxDecoration(
+                              borderRadius: BorderRadius.circular(8),
+                              boxShadow: [BoxShadow(color: NH.a(Colors.black, .5 * t), blurRadius: 22 * t, offset: Offset(0, 10 * t))],
+                            ),
+                            child: CardView(card: _drag!.card, width: 90, animate: false),
+                          ),
+                        ),
+                      ),
+                    ),
                   ),
                 if (c.phase.id == 'programacion' && e.needsNullDeclaration) _nullPicker(),
                 if (_confirmExit) _confirmExitOverlay(),
@@ -393,7 +516,7 @@ class _MatchScreenState extends State<MatchScreen> {
         Column(mainAxisSize: MainAxisSize.min, children: [
           Row(mainAxisAlignment: MainAxisAlignment.spaceBetween, children: [
             Text('RIVAL · proc_0x4F', style: NH.mono(size: 9, color: const Color(0xFFFF6B86), spacing: 1)),
-            _pips(e.integrityOpp, e.nucOpp.integrity, NH.xp, brokeForSide: 'opp'),
+            _pips(e.integrityOpp, c.integrityMaxOpp, NH.xp, base: e.nucOpp.integrity, brokeForSide: 'opp'),
           ]),
           const SizedBox(height: 3),
           SizedBox(
@@ -419,8 +542,27 @@ class _MatchScreenState extends State<MatchScreen> {
             _slot(width: 52, height: 73, child: _execWrapMaybe(_oppSub(opp, 1), 'opp-sub1', NH.xp)),
           ]),
         ]),
-        if (c.hit?.side == 'opp') _floatingDmg(),
+        if (c.hit?.side == 'opp') _floatingDmg(youLost: false),
       ]),
+    );
+  }
+
+  // Pip de fase. El activo hace un pop (1→1.6→1) al cambiar de fase (re-key por phaseIdx).
+  Widget _phaseDot(int i) {
+    final active = i == c.phaseIdx;
+    final dot = Container(
+      width: 18, height: 3, margin: const EdgeInsets.symmetric(horizontal: 3),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(2),
+        color: active ? NH.fw : (i < c.phaseIdx ? const Color(0xFF2C4A5C) : const Color(0xFF1B2230)),
+        boxShadow: active ? [BoxShadow(color: NH.fw, blurRadius: 8)] : null,
+      ),
+    );
+    if (!active) return dot;
+    return OneShot(
+      key: ValueKey('phasedot${c.phaseIdx}'),
+      duration: const Duration(milliseconds: 220),
+      builder: (_, t) => Transform.scale(scale: 1 + sin(t.clamp(0.0, 1.0) * pi) * 0.6, child: dot),
     );
   }
 
@@ -433,15 +575,7 @@ class _MatchScreenState extends State<MatchScreen> {
       decoration: const BoxDecoration(border: Border(top: BorderSide(color: NH.line), bottom: BorderSide(color: NH.line))),
       child: Column(mainAxisSize: MainAxisSize.min, children: [
         Row(mainAxisAlignment: MainAxisAlignment.center, children: [
-          for (var i = 0; i < kPhases.length; i++)
-            Container(
-              width: 18, height: 3, margin: const EdgeInsets.symmetric(horizontal: 3),
-              decoration: BoxDecoration(
-                borderRadius: BorderRadius.circular(2),
-                color: i == c.phaseIdx ? NH.fw : (i < c.phaseIdx ? const Color(0xFF2C4A5C) : const Color(0xFF1B2230)),
-                boxShadow: i == c.phaseIdx ? [BoxShadow(color: NH.fw, blurRadius: 8)] : null,
-              ),
-            ),
+          for (var i = 0; i < kPhases.length; i++) _phaseDot(i),
         ]),
         const SizedBox(height: 4),
         Text(c.phase.label, style: NH.mono(size: 12, weight: FontWeight.w600, color: const Color(0xFFDBE3F0), spacing: 3.6)),
@@ -490,25 +624,67 @@ class _MatchScreenState extends State<MatchScreen> {
     if (!phaseOk || finalType == null || orig == null || finalType == orig) return card;
     return Stack(clipBehavior: Clip.none, alignment: Alignment.center, children: [
       card,
-      Positioned(bottom: 4, left: 0, right: 0, child: Center(child: _morphChip(orig, finalType))),
+      // Velo del color nuevo sobre la carta: se nota A SIMPLE VISTA que mutó.
+      Positioned.fill(
+        child: IgnorePointer(
+          child: OneShot(
+            key: ValueKey('morphveil${c.round}$finalType'),
+            duration: const Duration(milliseconds: 900),
+            builder: (_, t) {
+              final a = t < .3 ? t / .3 : 1 - (t - .3) / .7 * .55; // sube y se asienta
+              return DecoratedBox(
+                decoration: BoxDecoration(
+                  borderRadius: BorderRadius.circular(8),
+                  border: Border.all(color: NH.a(Color(finalType.color), .9 * a), width: 1.6),
+                  color: NH.a(Color(finalType.color), .14 * a),
+                ),
+              );
+            },
+          ),
+        ),
+      ),
+      Positioned(bottom: -6, left: -30, right: -30, child: Center(child: _morphChip(orig, finalType))),
     ]);
   }
 
-  Widget _morphChip(CType from, CType to) => Container(
-        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
-        decoration: BoxDecoration(
-          color: NH.a(const Color(0xFF06080D), .92),
-          borderRadius: BorderRadius.circular(6),
-          border: Border.all(color: Color(to.color)),
-          boxShadow: [BoxShadow(color: NH.a(Color(to.color), .45), blurRadius: 9)],
-        ),
-        child: Row(mainAxisSize: MainAxisSize.min, children: [
-          Sigil(type: from, size: 10),
-          Text('▸', style: NH.mono(size: 9, color: NH.dim)),
-          Sigil(type: to, size: 12),
-          const SizedBox(width: 2),
-          Text(to.short, style: NH.mono(size: 8, weight: FontWeight.w700, color: Color(to.color))),
-        ]),
+  // Chip grande y animado: sigil origen ▸ sigil NUEVO + nombre completo del tipo.
+  Widget _morphChip(CType from, CType to) => OneShot(
+        key: ValueKey('morph${c.round}$to'),
+        duration: const Duration(milliseconds: 420),
+        builder: (_, t) {
+          final pop = Curves.easeOutBack.transform(t);
+          return Transform.scale(
+            scale: 0.5 + 0.5 * pop,
+            child: Opacity(
+              opacity: t.clamp(0.0, 1.0),
+              // FittedBox: si el hueco es estrecho (cartas pequeñas), el chip se
+              // encoge en vez de desbordar.
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2.5),
+                  decoration: BoxDecoration(
+                    color: NH.a(const Color(0xFF06080D), .96),
+                    borderRadius: BorderRadius.circular(7),
+                    border: Border.all(color: Color(to.color), width: 1.3),
+                    boxShadow: [BoxShadow(color: NH.a(Color(to.color), .6), blurRadius: 14)],
+                  ),
+                  child: Row(mainAxisSize: MainAxisSize.min, children: [
+                    Sigil(type: from, size: 10),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 2.5),
+                      child: Text('▸', style: NH.mono(size: 9, weight: FontWeight.w700, color: Color(to.color))),
+                    ),
+                    Sigil(type: to, size: 14),
+                    const SizedBox(width: 3),
+                    Text(to.label.toUpperCase(),
+                        style: NH.mono(size: 9, weight: FontWeight.w700, color: Color(to.color), spacing: .6)),
+                  ]),
+                ),
+              ),
+            ),
+          );
+        },
       );
 
   // Deduce a quién (tú/rival) y a qué subrutina pertenece una línea del log, a
@@ -668,14 +844,14 @@ class _MatchScreenState extends State<MatchScreen> {
             _spot('integrity', Row(children: [
               Text(e.nucYou.name, style: NH.mono(size: 9, color: Color(e.nucYou.color), spacing: 1)),
               const SizedBox(width: 8),
-              _pips(e.integrityYou, e.nucYou.integrity, NH.pl, brokeForSide: 'you'),
+              _pips(e.integrityYou, c.integrityMaxYou, NH.pl, base: e.nucYou.integrity, brokeForSide: 'you'),
             ])),
           ]),
           _deckBar(),
           _spot('hand', _hand()),
           _spot('cta', _cta()),
         ]),
-        if (c.hit?.side == 'you') _floatingDmg(),
+        if (c.hit?.side == 'you') _floatingDmg(youLost: true),
       ]),
     );
   }
@@ -791,19 +967,33 @@ class _MatchScreenState extends State<MatchScreen> {
   Widget _hand() {
     final hand = c.handYou;
     final n = hand.length;
-    if (n == 0) return const SizedBox(height: 92);
+    if (n == 0 && _handGhosts.isEmpty) return const SizedBox(height: 92);
     final mid = (n - 1) / 2;
+    final gn = _handGhosts.length;
+    final gmid = (gn - 1) / 2;
     return SizedBox(
       height: 92,
       child: LayoutBuilder(
         builder: (ctx, cons) {
           // Cada carta ocupa una banda igual (toda tocable); si hay muchas, se
           // solapan visualmente pero cada una conserva su zona de toque.
-          final cellW = (cons.maxWidth / n).clamp(30.0, 66.0);
-          return Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            children: [for (var i = 0; i < n; i++) _handCell(hand[i], i, mid, cellW)],
-          );
+          final cellW = (cons.maxWidth / max(n, 1)).clamp(30.0, 66.0);
+          final gCellW = (cons.maxWidth / max(gn, 1)).clamp(30.0, 66.0);
+          return Stack(children: [
+            if (n > 0)
+              Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [for (var i = 0; i < n; i++) _handCell(hand[i], i, mid, cellW)],
+              ),
+            // Cartas rebarajadas: se desmaterializan donde estaba la mano vieja.
+            if (gn > 0)
+              IgnorePointer(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [for (var i = 0; i < gn; i++) _ghostCell(_handGhosts[i], i, gmid, gCellW)],
+                ),
+              ),
+          ]);
         },
       ),
     );
@@ -819,10 +1009,14 @@ class _MatchScreenState extends State<MatchScreen> {
       child: CardView(card: card, width: 64),
     );
     if (fresh) {
-      final base = visual;
-      visual = OneShot(
-        duration: const Duration(milliseconds: 320),
-        builder: (_, t) => Transform.translate(offset: Offset(0, (1 - t) * 28), child: Opacity(opacity: t, child: base)),
+      // Robo: la carta se "materializa" (escalonado por posición). Si hubo
+      // rebarajeo, espera a que la mano vieja termine de desvanecerse.
+      final resh = _handGhosts.isNotEmpty;
+      visual = Materialize(
+        key: ValueKey('mat${card.uid}'),
+        duration: Duration(milliseconds: resh ? 820 : 460),
+        delay: ((resh ? .42 : 0.0) + i * .055).clamp(0.0, .85),
+        child: visual,
       );
     }
     return SizedBox(
@@ -838,6 +1032,30 @@ class _MatchScreenState extends State<MatchScreen> {
             maxWidth: 64,
             alignment: Alignment.bottomCenter,
             child: visual,
+          ),
+        ),
+      ),
+    );
+  }
+
+  // Carta que dejó la mano por un rebarajeo: misma pose, desmaterializándose.
+  Widget _ghostCell(CardInstance card, int i, double mid, double cellW) {
+    return SizedBox(
+      width: cellW,
+      height: 92,
+      child: OverflowBox(
+        minWidth: 64,
+        maxWidth: 64,
+        alignment: Alignment.bottomCenter,
+        child: Materialize(
+          key: ValueKey('demat$_ghostSeq${card.uid}'),
+          reverse: true,
+          duration: const Duration(milliseconds: 400),
+          delay: (i * .05).clamp(0.0, .5),
+          child: Transform.rotate(
+            angle: (i - mid) * .05,
+            alignment: Alignment.bottomCenter,
+            child: CardView(card: card, width: 64, animate: false),
           ),
         ),
       ),
@@ -878,7 +1096,10 @@ class _MatchScreenState extends State<MatchScreen> {
           color: enabled || loading ? null : const Color(0xFF0C1118),
           boxShadow: enabled && !loading ? [BoxShadow(color: NH.a(NH.fw, .22), blurRadius: 16)] : (loading ? [BoxShadow(color: NH.a(NH.amber, .2), blurRadius: 16)] : null),
         ),
-        child: Center(child: Text(label, textAlign: TextAlign.center, style: NH.mono(size: 12, weight: FontWeight.w600, color: enabled ? const Color(0xFFEAF7FF) : (loading ? NH.amber : NH.dim), spacing: 1.4))),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Text(label, textAlign: TextAlign.center, style: NH.mono(size: 12, weight: FontWeight.w600, color: enabled ? const Color(0xFFEAF7FF) : (loading ? NH.amber : NH.dim), spacing: 1.4)),
+          if (loading) ...[const SizedBox(height: 7), const _LoadingBar()],
+        ]),
       ),
     );
   }
@@ -973,53 +1194,113 @@ class _MatchScreenState extends State<MatchScreen> {
   Widget _dropSlot(String id, double width, double height, CardInstance? card, {bool glow = false}) {
     final hot = _hover == id;
     final filled = card != null;
-    return Container(
-      key: _slotKeys[id],
-      width: width, height: height, alignment: Alignment.center,
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(6),
-        color: hot ? NH.a(NH.pl, .08) : null,
-        border: Border.all(
-          color: hot ? NH.pl : (filled && glow ? NH.pl : (filled ? const Color(0xFF243247) : const Color(0xFF2C3546))),
-          width: hot ? 1.4 : 1,
+    // Slot compatible con la carta que se está arrastrando (aún sin enganchar).
+    final validDrag = _drag != null && _dragActive && !filled && _validTargets(_drag!.card).contains(id);
+    // Los overlays (pulso/onda) van en un Stack EXTERNO: así Positioned.fill mide
+    // el slot completo (width×height) y no el contenido (p. ej. el texto 'SUB').
+    return Stack(children: [
+      Container(
+        key: _slotKeys[id],
+        width: width, height: height, alignment: Alignment.center,
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(6),
+          color: hot ? NH.a(NH.pl, .08) : (validDrag ? NH.a(NH.pl, .04) : null),
+          border: Border.all(
+            color: hot ? NH.pl : (validDrag ? NH.a(NH.pl, .55) : (filled && glow ? NH.pl : (filled ? const Color(0xFF243247) : const Color(0xFF2C3546)))),
+            width: hot ? 1.4 : 1,
+          ),
+          boxShadow: hot || (filled && glow) ? [BoxShadow(color: NH.a(NH.pl, hot ? .5 : .4), blurRadius: hot ? 22 : 18)] : null,
         ),
-        boxShadow: hot || (filled && glow) ? [BoxShadow(color: NH.a(NH.pl, hot ? .5 : .4), blurRadius: hot ? 22 : 18)] : null,
+        child: filled
+            ? GestureDetector(
+                onTap: () {
+                  if (c.phase.id != 'programacion') {
+                    widget.onInspect(card); // ya resuelto: tocar = zoom
+                  } else if (id == 'active') {
+                    c.returnActive();
+                  } else {
+                    c.returnSub(id == 'sub0' ? 0 : 1);
+                  }
+                },
+                child: _execWrap(_popCard(card, width), id == 'active' ? 'you-active' : (id == 'sub0' ? 'you-sub0' : 'you-sub1'), NH.pl),
+              )
+            : Text(id == 'active' ? 'ACTIVO' : 'SUB', style: NH.mono(size: 8, color: const Color(0xFF34405A), spacing: 1.8)),
       ),
-      child: filled
-          ? GestureDetector(
-              onTap: () {
-                if (c.phase.id != 'programacion') {
-                  widget.onInspect(card); // ya resuelto: tocar = zoom
-                } else if (id == 'active') {
-                  c.returnActive();
-                } else {
-                  c.returnSub(id == 'sub0' ? 0 : 1);
-                }
-              },
-              child: _execWrap(_popCard(card, width), id == 'active' ? 'you-active' : (id == 'sub0' ? 'you-sub0' : 'you-sub1'), NH.pl),
-            )
-          : Text(id == 'active' ? 'ACTIVO' : 'SUB', style: NH.mono(size: 8, color: const Color(0xFF34405A), spacing: 1.8)),
-    );
-  }
-
-  Widget _pips(int n, int max, Color color, {String? brokeForSide}) {
-    final hit = c.hit;
-    final breaking = hit != null && hit.side == brokeForSide;
-    final breakStart = n; // los pips n..n+amount-1 acaban de apagarse
-    return Row(children: [
-      for (var i = 0; i < max; i++) _pip(i, n, color, breaking && i >= breakStart && i < breakStart + hit.amount),
+      // Pulso del slot válido mientras se arrastra (y aún no está enganchado).
+      if (validDrag && !hot) const Positioned.fill(child: IgnorePointer(child: _SlotPulse(color: NH.pl))),
+      // Onda expansiva al soltar (color del tipo de la carta).
+      if (_dropRipple == id)
+        Positioned.fill(
+          child: IgnorePointer(
+            child: OneShot(
+              key: ValueKey('ripple$id$_dropRippleSeq'),
+              duration: const Duration(milliseconds: 460),
+              builder: (_, t) => CustomPaint(painter: _RipplePainter(t, _dropRippleColor)),
+            ),
+          ),
+        ),
     ]);
   }
 
-  Widget _pip(int i, int n, Color color, bool broke) {
+  // [max] es el máximo EFECTIVO; [base] la integridad del núcleo sin modificar.
+  // Con bonus (+N): los pips extra llevan borde ámbar. Con malus (−N): se dibujan
+  // huecos "bloqueados" rojos donde DEBERÍA haber integridad, y un chip ±N.
+  Widget _pips(int n, int max, Color color, {String? brokeForSide, int? base}) {
+    final hit = c.hit;
+    final breaking = hit != null && hit.side == brokeForSide;
+    final breakStart = n; // los pips n..n+amount-1 acaban de apagarse
+    final b = base ?? max;
+    final bonus = max - b;
+    return Row(children: [
+      if (bonus != 0) _intModChip(bonus),
+      for (var i = 0; i < max; i++)
+        _pip(i, n, color, breaking && i >= breakStart && i < breakStart + hit.amount, boosted: i >= b),
+      for (var i = max; i < b; i++) _voidPip(),
+    ]);
+  }
+
+  // Chip "±N" junto a los pips: ámbar = integridad extra, rojo = reducida.
+  Widget _intModChip(int bonus) {
+    final col = bonus > 0 ? NH.amber : NH.xp;
+    return Container(
+      margin: const EdgeInsets.only(left: 3),
+      padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(3),
+        border: Border.all(color: NH.a(col, .8)),
+        color: NH.a(col, .12),
+      ),
+      child: Text(bonus > 0 ? '+$bonus' : '$bonus',
+          style: NH.mono(size: 7.5, weight: FontWeight.w700, color: col)),
+    );
+  }
+
+  // Hueco de integridad BLOQUEADA por un malus: ahí debería haber un pip.
+  Widget _voidPip() => Container(
+        width: 15, height: 5, margin: const EdgeInsets.only(left: 3),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(1),
+          color: NH.a(NH.xp, .08),
+          border: Border.all(color: NH.a(NH.xp, .55)),
+        ),
+        child: Center(
+          child: Container(width: 7, height: 1.2, color: NH.a(NH.xp, .75)),
+        ),
+      );
+
+  Widget _pip(int i, int n, Color color, bool broke, {bool boosted = false}) {
     final on = i < n;
     final base = Container(
       width: 15, height: 5, margin: const EdgeInsets.only(left: 3),
       decoration: BoxDecoration(
         borderRadius: BorderRadius.circular(1),
         color: on ? color : const Color(0xFF1B2230),
-        border: on ? null : Border.all(color: const Color(0xFF2A3344)),
-        boxShadow: on ? [BoxShadow(color: color, blurRadius: 8)] : null,
+        border: boosted
+            ? Border.all(color: NH.a(NH.amber, on ? 1 : .5), width: .9)
+            : (on ? null : Border.all(color: const Color(0xFF2A3344))),
+        boxShadow: on
+            ? [BoxShadow(color: boosted ? NH.amber : color, blurRadius: 8)]
+            : null,
       ),
     );
     if (!broke) return base;
@@ -1027,49 +1308,64 @@ class _MatchScreenState extends State<MatchScreen> {
       key: ValueKey('pip$i${c.round}'),
       duration: const Duration(milliseconds: 700),
       builder: (_, t) {
-        final scale = t < .3 ? 1.5 - t / .3 * .35 : 1.15 - (t - .3) / .7 * .15;
-        final col = Color.lerp(NH.xp, const Color(0xFF1B2230), t)!;
+        // Flash blanco breve (≈80 ms) antes de apagarse.
+        final scale = t < .12 ? 1.7 : (t < .3 ? 1.6 - (t - .12) / .18 * .45 : 1.15 - (t - .3) / .7 * .15);
+        final col = t < .12
+            ? Color.lerp(Colors.white, NH.xp, t / .12)!
+            : Color.lerp(NH.xp, const Color(0xFF1B2230), (t - .12) / .88)!;
+        final glow = t < .12 ? 18.0 : 16 * (1 - t);
         return Transform.scale(
           scale: scale,
           child: Container(
             width: 15, height: 5, margin: const EdgeInsets.only(left: 3),
-            decoration: BoxDecoration(borderRadius: BorderRadius.circular(1), color: col, boxShadow: [BoxShadow(color: NH.a(NH.xp, 1 - t), blurRadius: 16 * (1 - t))]),
+            decoration: BoxDecoration(borderRadius: BorderRadius.circular(1), color: col, boxShadow: [BoxShadow(color: NH.a(t < .12 ? Colors.white : NH.xp, 1 - t), blurRadius: glow)]),
           ),
         );
       },
     );
   }
 
-  Widget _floatingDmg() => Positioned.fill(
-        child: IgnorePointer(
-          child: OneShot(
-            key: ValueKey('dmg${c.round}'),
-            duration: const Duration(milliseconds: 1200),
-            curve: Curves.linear,
-            builder: (_, t) {
-              final rise = -t * 30;
-              final op = t < .18 ? t / .18 : (t > .8 ? (1 - (t - .8) / .2) : 1.0);
-              return Center(
-                child: Transform.translate(
-                  offset: Offset(0, rise),
-                  child: Opacity(
-                    opacity: op.clamp(0, 1),
-                    child: Column(mainAxisSize: MainAxisSize.min, children: [
-                      Text('RONDA PERDIDA', style: NH.disp(size: 17, weight: FontWeight.w700, color: const Color(0xFFFF6B86), spacing: 1.8).copyWith(shadows: [const Shadow(color: Color(0xAAFF4068), blurRadius: 16), const Shadow(color: Colors.black, blurRadius: 6)])),
-                      const SizedBox(height: 3),
-                      Container(
-                        padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 2),
-                        decoration: BoxDecoration(color: NH.a(NH.xp, .92), borderRadius: BorderRadius.circular(4), boxShadow: [BoxShadow(color: NH.a(NH.xp, .6), blurRadius: 14)]),
-                        child: Text('−${c.hit?.amount ?? 1} INTEGRIDAD', style: NH.mono(size: 11, weight: FontWeight.w700, color: Colors.white, spacing: 1.2)),
-                      ),
-                    ]),
-                  ),
+  // Número de daño flotante. [youLost] → sobre TU zona (rojo); si no, sobre el
+  // rival cuando le pegas (verde). Pop de impacto + jitter + ascenso + fade.
+  Widget _floatingDmg({required bool youLost}) {
+    final amount = c.hit?.amount ?? 1;
+    final col = youLost ? NH.xp : NH.pl;
+    final title = youLost ? 'RONDA PERDIDA' : 'PROCESO DAÑADO';
+    return Positioned.fill(
+      child: IgnorePointer(
+        child: OneShot(
+          key: ValueKey('dmg${c.round}${youLost ? "y" : "o"}'),
+          duration: const Duration(milliseconds: 1100),
+          curve: Curves.linear,
+          builder: (_, t) {
+            final pop = Curves.easeOutBack.transform((t / .18).clamp(0.0, 1.0));
+            final numScale = 1.7 - 0.7 * pop; // 1.7 → 1.0 (impacto)
+            final rise = t < .2 ? 0.0 : -(t - .2) / .8 * 46;
+            final jitter = t < .25 ? sin(t * 60) * 1.5 : 0.0;
+            final op = t < .12 ? t / .12 : (t > .72 ? (1 - (t - .72) / .28) : 1.0);
+            return Center(
+              child: Transform.translate(
+                offset: Offset(jitter, rise),
+                child: Opacity(
+                  opacity: op.clamp(0, 1),
+                  child: Column(mainAxisSize: MainAxisSize.min, children: [
+                    Transform.scale(
+                      scale: numScale,
+                      child: Text('−$amount',
+                          style: NH.disp(size: 36, weight: FontWeight.w700, color: col).copyWith(
+                              shadows: [Shadow(color: NH.a(col, .7), blurRadius: 20), const Shadow(color: Colors.black, blurRadius: 6)])),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(title, style: NH.mono(size: 11, weight: FontWeight.w700, color: col, spacing: 2)),
+                  ]),
                 ),
-              );
-            },
-          ),
+              ),
+            );
+          },
         ),
-      );
+      ),
+    );
+  }
 
   // Selector OBLIGATORIO del tipo del NULL-SHARD. Modal: absorbe los toques para
   // que no se pueda interactuar con el tablero hasta declarar (firewall/exploit/signal).
@@ -1357,18 +1653,22 @@ class _DischargePainter extends CustomPainter {
 
     final path = Path()..moveTo(cx, winnerY);
     const steps = 11;
+    final pts = <Offset>[Offset(cx, winnerY)];
     for (var i = 1; i <= steps; i++) {
       final f = i / steps;
       final y = winnerY + (headY - winnerY) * f;
       final x = cx + (rnd.nextDouble() - .5) * 42 * (1 - f * .25);
       path.lineTo(x, y);
+      pts.add(Offset(x, y));
     }
+    // Doble pulso: el rayo "parpadea" una vez a mitad de recorrido.
+    final flicker = (t > .35 && t < .5) ? .45 : 1.0;
     canvas.drawPath(
         path,
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 6
-          ..color = NH.a(color, .55)
+          ..color = NH.a(color, .55 * flicker)
           ..maskFilter = const MaskFilter.blur(BlurStyle.normal, 8));
     canvas.drawPath(
         path,
@@ -1376,16 +1676,141 @@ class _DischargePainter extends CustomPainter {
           ..style = PaintingStyle.stroke
           ..strokeWidth = 2.4
           ..strokeCap = StrokeCap.round
-          ..color = Colors.white);
+          ..color = NH.a(Colors.white, flicker));
 
-    // Estallido en el perdedor cuando el rayo llega.
+    // Ramificaciones: 2-3 ramas cortas desde puntos del rayo principal.
+    final branchPaint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1
+      ..color = NH.a(color, .5 * flicker);
+    for (var b = 0; b < 3; b++) {
+      final from = pts[3 + b * 2];
+      final len = 14.0 + rnd.nextDouble() * 16;
+      final dir = (rnd.nextBool() ? 1 : -1);
+      canvas.drawLine(from, from + Offset(dir * len, (rnd.nextDouble() - .3) * len), branchPaint);
+    }
+
+    // Estallido en el perdedor cuando el rayo llega: relleno + anillo + chispas.
     if (t > .5) {
       final f = ((t - .5) / .5).clamp(0.0, 1.0);
-      canvas.drawCircle(Offset(cx, loserY), 70 * f,
+      final c2 = Offset(cx, loserY);
+      canvas.drawCircle(c2, 70 * f,
           Paint()..color = NH.a(color, .4 * (1 - f))..maskFilter = const MaskFilter.blur(BlurStyle.normal, 22));
+      // Anillo expandiéndose (radio 0→46, stroke 3→0).
+      canvas.drawCircle(c2, 46 * f,
+          Paint()..style = PaintingStyle.stroke..strokeWidth = 3 * (1 - f)..color = NH.a(Colors.white, .8 * (1 - f)));
+      // 6 chispas radiales.
+      final spark = Paint()..color = NH.a(color, 1 - f)..strokeWidth = 2..strokeCap = StrokeCap.round;
+      for (var s = 0; s < 6; s++) {
+        final ang = s * pi / 3;
+        final r0 = 10 + 30 * f;
+        canvas.drawLine(c2 + Offset(cos(ang), sin(ang)) * r0, c2 + Offset(cos(ang), sin(ang)) * (r0 + 8 * (1 - f)), spark);
+      }
     }
   }
 
   @override
   bool shouldRepaint(covariant _DischargePainter old) => true;
+}
+
+/// Barra de 2 px con un segmento ámbar que recorre el ancho (estados de carga del botón).
+class _LoadingBar extends StatefulWidget {
+  const _LoadingBar();
+  @override
+  State<_LoadingBar> createState() => _LoadingBarState();
+}
+
+class _LoadingBarState extends State<_LoadingBar> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 1100))..repeat();
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      height: 2,
+      width: 120,
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(1),
+        child: Stack(children: [
+          Positioned.fill(child: ColoredBox(color: NH.a(NH.amber, .12))),
+          AnimatedBuilder(
+            animation: _c,
+            builder: (_, _) {
+              final t = _c.value;
+              return Align(
+                alignment: Alignment(-1 + 2 * t, 0),
+                child: Container(
+                  width: 38,
+                  height: 2,
+                  decoration: BoxDecoration(
+                    color: NH.amber,
+                    boxShadow: [BoxShadow(color: NH.a(NH.amber, .6), blurRadius: 6)],
+                  ),
+                ),
+              );
+            },
+          ),
+        ]),
+      ),
+    );
+  }
+}
+
+/// Borde que respira sobre un slot compatible mientras se arrastra una carta.
+class _SlotPulse extends StatefulWidget {
+  final Color color;
+  const _SlotPulse({required this.color});
+  @override
+  State<_SlotPulse> createState() => _SlotPulseState();
+}
+
+class _SlotPulseState extends State<_SlotPulse> with SingleTickerProviderStateMixin {
+  late final AnimationController _c =
+      AnimationController(vsync: this, duration: const Duration(milliseconds: 900))..repeat(reverse: true);
+  @override
+  void dispose() {
+    _c.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AnimatedBuilder(
+      animation: _c,
+      builder: (_, _) {
+        final p = Curves.easeInOut.transform(_c.value);
+        return DecoratedBox(
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(6),
+            border: Border.all(color: NH.a(widget.color, .25 + .55 * p), width: 1.2),
+            boxShadow: [BoxShadow(color: NH.a(widget.color, .10 + .22 * p), blurRadius: 8 + 8 * p)],
+          ),
+        );
+      },
+    );
+  }
+}
+
+/// Anillo que se expande y se desvanece al soltar una carta en el slot.
+class _RipplePainter extends CustomPainter {
+  final double t;
+  final Color color;
+  _RipplePainter(this.t, this.color);
+  @override
+  void paint(Canvas canvas, Size size) {
+    final center = size.center(Offset.zero);
+    final r = size.shortestSide * 0.62 * Curves.easeOut.transform(t);
+    final a = 1 - t;
+    canvas.drawCircle(center, r,
+        Paint()..style = PaintingStyle.stroke..strokeWidth = 2.4 * a..color = NH.a(color, .8 * a));
+    if (t < .35) canvas.drawCircle(center, r, Paint()..color = NH.a(color, .12 * (1 - t / .35)));
+  }
+
+  @override
+  bool shouldRepaint(covariant _RipplePainter old) => old.t != t;
 }

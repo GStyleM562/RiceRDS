@@ -157,6 +157,22 @@ void main() {
       expect(b.lastOf(S2C.gameOver)!['outcome'], 'win');
     });
 
+    test('rendición explícita (leave): el rival gana AL INSTANTE, sin ventana', () {
+      // Ventana de reconexión larga a propósito: el forfeit NO debe esperarla.
+      final hub = Hub(RoomManager(
+        rng: Random(1),
+        reconnectWindow: const Duration(minutes: 5),
+        closeDelay: const Duration(milliseconds: 5),
+      ));
+      final a = Cap('A'), b = Cap('B');
+      hub.onMessage(a.conn, encodeMsg(C2S.createRoom, {'deck': Deck.starter().toJson()}));
+      final code = a.lastOf(S2C.roomCreated)!['code'] as String;
+      hub.onMessage(b.conn, encodeMsg(C2S.joinRoom, {'code': code, 'deck': Deck.starter().toJson()}));
+
+      hub.onMessage(a.conn, encodeMsg(C2S.leave)); // A se rinde
+      expect(b.lastOf(S2C.gameOver)!['outcome'], 'win'); // sin esperar nada
+    });
+
     test('reconexión por token restaura la mesa y avisa al rival', () {
       final hub = Hub(RoomManager(rng: Random(1), reconnectWindow: const Duration(seconds: 5)));
       final a = Cap('A'), b = Cap('B');

@@ -306,6 +306,17 @@ class NetworkMatchController extends ChangeNotifier implements MatchView {
   @override
   int get integrityOpp => _integrityOpp;
   @override
+  int get integrityMaxYou => _nucYou.integrity; // online no hay modificadores
+  @override
+  int get integrityMaxOpp => _nucOpp.integrity;
+  @override
+  String? get notice {
+    if (_gameOver) return null;
+    if (!oppConnected) return 'EL RIVAL SE DESCONECTÓ — si no vuelve en unos segundos, ganas por abandono';
+    if (errorMsg == 'Conexión perdida') return 'CONEXIÓN PERDIDA — revisa tu red…';
+    return null;
+  }
+  @override
   int get ramMax {
     var ram = _ramBase;
     final a = _active;

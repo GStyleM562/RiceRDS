@@ -14,6 +14,7 @@ import '../audio/audio_service.dart';
 import '../theme/tokens.dart';
 import '../widgets/card_view.dart';
 import '../widgets/matrix_rain.dart';
+import '../widgets/sigil.dart';
 import 'adventure_controller.dart';
 import 'adventure_data.dart';
 import 'adventure_state.dart';
@@ -168,43 +169,7 @@ class AdventureHost extends StatelessWidget {
   }
 
   // ── BOTÍN (draft 1 de 3) ──
-  Widget _rewardView() {
-    return Column(children: [
-      const SizedBox(height: 12),
-      Text('BOTÍN RECUPERADO', style: NH.disp(size: 20, weight: FontWeight.w700, color: NH.pl, spacing: 2)),
-      const SizedBox(height: 4),
-      Text('Elige una carta para tu colección de aventura.',
-          textAlign: TextAlign.center, style: NH.mono(size: 10, color: NH.dim)),
-      const Spacer(),
-      Wrap(
-        alignment: WrapAlignment.center,
-        spacing: 10,
-        runSpacing: 10,
-        children: [for (final id in ctrl.rewardChoices) _rewardCard(id)],
-      ),
-      const Spacer(),
-      GestureDetector(
-        onTap: () => ctrl.chooseReward(null),
-        child: Text('SALTAR · +$kRewardCredits ◆', style: NH.mono(size: 11, color: NH.dim, spacing: 1)),
-      ),
-      const SizedBox(height: 20),
-    ]);
-  }
-
-  Widget _rewardCard(String id) {
-    final card = cardInstanceOf(id);
-    final isNew = st.owned(id) == 0;
-    return GestureDetector(
-      onTap: () => ctrl.chooseReward(id),
-      onLongPress: () => onZoom(card),
-      child: Column(mainAxisSize: MainAxisSize.min, children: [
-        CardView(card: card, width: 92),
-        const SizedBox(height: 4),
-        Text(isNew ? 'NUEVA' : 'COPIA +1',
-            style: NH.mono(size: 8, weight: FontWeight.w700, color: isNew ? NH.pl : NH.dim, spacing: 1)),
-      ]),
-    );
-  }
+  Widget _rewardView() => _RewardDraft(ctrl: ctrl, st: st, onZoom: onZoom);
 
   // ── TIENDA (CUARENTENA) ──
   Widget _shopView() {
@@ -335,31 +300,51 @@ class AdventureHost extends StatelessWidget {
       ),
       GestureDetector(
         onTap: () => ctrl.chooseMutation(null),
-        child: Text('CONSERVAR MI NATURALEZA (${st.nature.name})', style: NH.mono(size: 10, color: NH.dim, spacing: 1)),
+        child: Text.rich(
+          TextSpan(children: [
+            const TextSpan(text: 'CONSERVAR MI NATURALEZA ('),
+            TextSpan(
+                text: st.nature.name,
+                style: NH.mono(size: 10, weight: FontWeight.w700, color: Color(st.nature.nucleo.color), spacing: 1)),
+            const TextSpan(text: ')'),
+          ]),
+          style: NH.mono(size: 10, color: NH.dim, spacing: 1),
+        ),
       ),
       const SizedBox(height: 18),
     ]);
   }
 
-  Widget _natureRow(NatureDef n) => GestureDetector(
-        onTap: () => ctrl.chooseMutation(n.id),
-        child: Container(
-          margin: const EdgeInsets.only(bottom: 10),
-          padding: const EdgeInsets.all(12),
-          decoration: BoxDecoration(
-            borderRadius: BorderRadius.circular(10),
-            color: NH.a(NH.nl, .06),
-            border: Border.all(color: NH.a(NH.nl, .5)),
-          ),
-          child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
-            Text(n.name, style: NH.disp(size: 14, weight: FontWeight.w700, color: const Color(0xFFEAF1FB), spacing: 1)),
-            const SizedBox(height: 3),
-            Text(n.blurb, style: NH.mono(size: 9.5, color: NH.ink2, height: 1.4)),
-            const SizedBox(height: 4),
-            Text(n.endingHint, style: NH.mono(size: 8.5, weight: FontWeight.w700, color: NH.a(NH.nl, .9), spacing: .5)),
-          ]),
+  // Cada rol se pinta con el color de SU Núcleo (para saber a quién pertenece).
+  Widget _natureRow(NatureDef n) {
+    final col = Color(n.nucleo.color);
+    return GestureDetector(
+      onTap: () => ctrl.chooseMutation(n.id),
+      child: Container(
+        margin: const EdgeInsets.only(bottom: 10),
+        padding: const EdgeInsets.all(12),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(10),
+          color: NH.a(col, .07),
+          border: Border.all(color: NH.a(col, .55)),
+          boxShadow: [BoxShadow(color: NH.a(col, .14), blurRadius: 10)],
         ),
-      );
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, mainAxisSize: MainAxisSize.min, children: [
+          Row(children: [
+            Sigil(type: n.nucleo.type, size: 16),
+            const SizedBox(width: 6),
+            Text(n.name, style: NH.disp(size: 14, weight: FontWeight.w700, color: col, spacing: 1)),
+            const Spacer(),
+            Text(n.nucleo.name, style: NH.mono(size: 8, weight: FontWeight.w700, color: NH.a(col, .8), spacing: 1)),
+          ]),
+          const SizedBox(height: 5),
+          Text(n.blurb, style: NH.mono(size: 9.5, color: NH.ink2, height: 1.4)),
+          const SizedBox(height: 4),
+          Text(n.endingHint, style: NH.mono(size: 8.5, weight: FontWeight.w700, color: NH.a(col, .9), spacing: .5)),
+        ]),
+      ),
+    );
+  }
 
   // ── Botón ancho reutilizable ──
   Widget _wideBtn(String label, Color accent, VoidCallback onTap, {bool ghost = false}) {
@@ -377,6 +362,107 @@ class AdventureHost extends StatelessWidget {
         child: Center(
           child: Text(label, textAlign: TextAlign.center, style: NH.mono(size: 12, weight: FontWeight.w700, color: ghost ? NH.dim : accent, spacing: 1.5)),
         ),
+      ),
+    );
+  }
+}
+
+/// Draft de botín (1 de 3) con confirmación: tocar SELECCIONA (no elige), el
+/// botón ACEPTAR confirma. Tocar la seleccionada de nuevo (o mantener) la abre
+/// en zoom para leerla — así no se elige una carta por accidente.
+class _RewardDraft extends StatefulWidget {
+  final AdventureController ctrl;
+  final AdventureState st;
+  final void Function(CardInstance) onZoom;
+  const _RewardDraft({required this.ctrl, required this.st, required this.onZoom});
+
+  @override
+  State<_RewardDraft> createState() => _RewardDraftState();
+}
+
+class _RewardDraftState extends State<_RewardDraft> {
+  String? _selected;
+
+  @override
+  Widget build(BuildContext context) {
+    final sel = _selected;
+    return Column(children: [
+      const SizedBox(height: 12),
+      Text('BOTÍN RECUPERADO', style: NH.disp(size: 20, weight: FontWeight.w700, color: NH.pl, spacing: 2)),
+      const SizedBox(height: 4),
+      Text('Toca una carta para seleccionarla · tócala de nuevo para leerla.',
+          textAlign: TextAlign.center, style: NH.mono(size: 10, color: NH.dim)),
+      const Spacer(),
+      Wrap(
+        alignment: WrapAlignment.center,
+        spacing: 10,
+        runSpacing: 10,
+        children: [for (final id in widget.ctrl.rewardChoices) _card(id)],
+      ),
+      const Spacer(),
+      AnimatedSwitcher(
+        duration: const Duration(milliseconds: 180),
+        child: sel == null
+            ? const SizedBox(height: 46, width: double.infinity)
+            : GestureDetector(
+                key: ValueKey('accept$sel'),
+                onTap: () => widget.ctrl.chooseReward(sel),
+                child: Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  decoration: BoxDecoration(
+                    borderRadius: BorderRadius.circular(8),
+                    color: NH.a(NH.pl, .1),
+                    border: Border.all(color: NH.pl, width: 1.2),
+                    boxShadow: [BoxShadow(color: NH.a(NH.pl, .22), blurRadius: 14)],
+                  ),
+                  child: Center(
+                    child: Text('ACEPTAR «${cardInstanceOf(sel).name}» ▸',
+                        textAlign: TextAlign.center,
+                        style: NH.mono(size: 12, weight: FontWeight.w700, color: NH.pl, spacing: 1.5)),
+                  ),
+                ),
+              ),
+      ),
+      const SizedBox(height: 12),
+      GestureDetector(
+        onTap: () => widget.ctrl.chooseReward(null),
+        child: Text('SALTAR · +$kRewardCredits ◆', style: NH.mono(size: 11, color: NH.dim, spacing: 1)),
+      ),
+      const SizedBox(height: 20),
+    ]);
+  }
+
+  Widget _card(String id) {
+    final card = cardInstanceOf(id);
+    final isNew = widget.st.owned(id) == 0;
+    final sel = _selected == id;
+    return GestureDetector(
+      // 1er toque: selecciona. 2º toque (ya seleccionada): abre el zoom para leer.
+      onTap: () {
+        if (sel) {
+          widget.onZoom(card);
+        } else {
+          setState(() => _selected = id);
+        }
+      },
+      onLongPress: () => widget.onZoom(card),
+      child: AnimatedScale(
+        scale: sel ? 1.06 : 1.0,
+        duration: const Duration(milliseconds: 140),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          Container(
+            decoration: BoxDecoration(
+              borderRadius: BorderRadius.circular(8),
+              boxShadow: sel ? [BoxShadow(color: NH.a(NH.pl, .55), blurRadius: 18, spreadRadius: 1)] : null,
+              border: Border.all(color: sel ? NH.pl : Colors.transparent, width: 1.4),
+            ),
+            child: CardView(card: card, width: 92),
+          ),
+          const SizedBox(height: 4),
+          Text(sel ? '◈ SELECCIONADA' : (isNew ? 'NUEVA' : 'COPIA +1'),
+              style: NH.mono(size: 8, weight: FontWeight.w700, color: sel ? NH.pl : (isNew ? NH.pl : NH.dim), spacing: 1)),
+        ]),
       ),
     );
   }

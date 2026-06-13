@@ -28,6 +28,7 @@ class AppState extends ChangeNotifier {
   static const _kIntro = 'nh_intro';
   static const _kTutBasic = 'nh_tut_basic';
   static const _kTutAdv = 'nh_tut_adv';
+  static const _kFirstPrompt = 'nh_first_prompt'; // sugerencia de tutorial ya ofrecida
   static const _kGames = 'nh_games';
 
   NucleoDef nucleo = kNucleos.first;
@@ -43,6 +44,7 @@ class AppState extends ChangeNotifier {
   bool introSeen = false;
   bool tutorialBasicDone = false;
   bool tutorialAdvancedDone = false;
+  bool firstPromptSeen = false; // la sugerencia de tutorial ya se ofreció (persistente)
 
   // Partidas de Versus jugadas (para desbloquear cartas nuevas en multijugador).
   int gamesPlayed = 0;
@@ -90,6 +92,7 @@ class AppState extends ChangeNotifier {
     introSeen = p.getBool(_kIntro) ?? false;
     tutorialBasicDone = p.getBool(_kTutBasic) ?? false;
     tutorialAdvancedDone = p.getBool(_kTutAdv) ?? false;
+    firstPromptSeen = p.getBool(_kFirstPrompt) ?? false;
     gamesPlayed = p.getInt(_kGames) ?? 0;
     notifyListeners();
   }
@@ -122,17 +125,28 @@ class AppState extends ChangeNotifier {
     SharedPreferences.getInstance().then((p) => p.setBool(_kTutAdv, true));
   }
 
+  /// La sugerencia de tutorial ya se ofreció (la inició o la descartó). No vuelve
+  /// a aparecer hasta "reiniciar primera vez". Persistente entre sesiones.
+  void markFirstPromptSeen() {
+    if (firstPromptSeen) return;
+    firstPromptSeen = true;
+    notifyListeners();
+    SharedPreferences.getInstance().then((p) => p.setBool(_kFirstPrompt, true));
+  }
+
   /// Vuelve al estado de "primera vez": la próxima vez (o ahora mismo) verás la
   /// intro y la ventana de tutorial otra vez. No toca mazos ni Historia.
   void resetOnboarding() {
     introSeen = false;
     tutorialBasicDone = false;
     tutorialAdvancedDone = false;
+    firstPromptSeen = false;
     notifyListeners();
     SharedPreferences.getInstance().then((p) {
       p.remove(_kIntro);
       p.remove(_kTutBasic);
       p.remove(_kTutAdv);
+      p.remove(_kFirstPrompt);
     });
   }
 

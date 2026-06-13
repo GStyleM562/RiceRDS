@@ -29,8 +29,9 @@ class FlushScreen extends StatefulWidget {
   State<FlushScreen> createState() => _FlushScreenState();
 }
 
-class _FlushScreenState extends State<FlushScreen> with SingleTickerProviderStateMixin {
+class _FlushScreenState extends State<FlushScreen> with TickerProviderStateMixin {
   late final AnimationController _intro;
+  late final AnimationController _amb; // ambiente en loop (partículas)
   final String _sig = '0x${Random().nextInt(0xFFFFFF).toRadixString(16).toUpperCase()}';
 
   bool get _win => widget.outcome == 'win';
@@ -43,6 +44,7 @@ class _FlushScreenState extends State<FlushScreen> with SingleTickerProviderStat
       vsync: this,
       duration: Duration(milliseconds: _win ? 1100 : 2000),
     )..forward();
+    _amb = AnimationController(vsync: this, duration: const Duration(seconds: 6))..repeat();
     // Música de la pantalla + estática/distorsión fuerte si TÚ pierdes.
     AudioService.instance.playMusic(_win ? Music.victory : Music.defeat);
     if (!_win) AudioService.instance.playSfx(Sfx.playerLose);
@@ -51,6 +53,7 @@ class _FlushScreenState extends State<FlushScreen> with SingleTickerProviderStat
   @override
   void dispose() {
     _intro.dispose();
+    _amb.dispose();
     AudioService.instance.playMusic(Music.menu); // al salir del resultado, vuelve la del menú
     super.dispose();
   }
@@ -74,6 +77,26 @@ class _FlushScreenState extends State<FlushScreen> with SingleTickerProviderStat
             if (!_win && t < .72) Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _ShutdownPainter(t)))),
             // Destello de victoria.
             if (_win && t < .9) Positioned.fill(child: IgnorePointer(child: CustomPaint(painter: _VictoryPainter(t)))),
+            // Partículas ascendentes (ambiente sutil de victoria).
+            if (_win)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _amb,
+                    builder: (_, _) => CustomPaint(painter: _ParticlesPainter(_amb.value)),
+                  ),
+                ),
+              ),
+            // Estática residual muy tenue tras el core dump (ambiente de derrota).
+            if (!_win && t > .7)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: AnimatedBuilder(
+                    animation: _amb,
+                    builder: (_, _) => CustomPaint(painter: _ResidualStaticPainter(_amb.value, ((t - .7) / .3).clamp(0.0, 1.0))),
+                  ),
+                ),
+              ),
           ]),
         );
       },
@@ -82,45 +105,56 @@ class _FlushScreenState extends State<FlushScreen> with SingleTickerProviderStat
 
   Widget _content(double t) {
     final glow = _win ? NH.pl : NH.xp;
-    // El reporte "entra" expandiéndose desde una línea (sensación de reinicio).
     final reveal = _win ? Curves.easeOut.transform((t / .7).clamp(0.0, 1.0)) : ((t - .62) / .38).clamp(0.0, 1.0);
     if (reveal <= 0) return const SizedBox.shrink();
-    final sy = (0.04 + 0.96 * reveal).clamp(0.04, 1.0);
-    return Opacity(
-      opacity: reveal,
-      child: Transform(
-        alignment: Alignment.center,
-        transform: Matrix4.diagonal3Values(1.0, sy, 1.0),
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
-            child: Column(mainAxisSize: MainAxisSize.min, children: [
-              Stack(alignment: Alignment.center, children: [
-                Transform.translate(offset: const Offset(-3, 1), child: Text(_win ? 'FLUSH' : 'CORE DUMP', style: NH.disp(size: 46, weight: FontWeight.w700, color: NH.a(NH.xp, .5)))),
-                Transform.translate(offset: const Offset(3, -1), child: Text(_win ? 'FLUSH' : 'CORE DUMP', style: NH.disp(size: 46, weight: FontWeight.w700, color: NH.a(NH.fw, .5)))),
-                Text(_win ? 'FLUSH' : 'CORE DUMP', style: NH.disp(size: 46, weight: FontWeight.w700, color: Colors.white).copyWith(shadows: [Shadow(color: NH.a(glow, .6), blurRadius: 26)])),
-              ]),
-              const SizedBox(height: 10),
-              Text(_subtitle(), textAlign: TextAlign.center, style: NH.mono(size: 11, color: NH.ink2, spacing: .6)),
-              const SizedBox(height: 22),
-              _stat('RESULTADO', _win ? 'VICTORIA' : 'DERROTA', _win ? NH.pl : NH.xp),
-              const SizedBox(height: 8),
-              _stat('RONDAS', widget.round.toString().padLeft(2, '0'), const Color(0xFFEAF1FB)),
-              const SizedBox(height: 8),
-              _stat('FIRMA', _sig, const Color(0xFFEAF1FB)),
-              if (widget.history.isNotEmpty) ...[
-                const SizedBox(height: 16),
-                _historyStrip(),
-              ],
-              const SizedBox(height: 26),
-              SizedBox(width: 300, child: BtnWide('REINTENTAR ▸', onTap: widget.onAgain)),
-              const SizedBox(height: 10),
-              SizedBox(width: 300, child: BtnWide('VOLVER AL MENÚ', variant: BtnVariant.ghost, onTap: widget.onMenu)),
-            ]),
-          ),
-        ),
+    // Cascada: cada sección "aparece" en su propio umbral de reveal.
+    double appear(double at) => ((reveal - at) / .22).clamp(0.0, 1.0);
+    return Center(
+      child: SingleChildScrollView(
+        padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 30),
+        child: Column(mainAxisSize: MainAxisSize.min, children: [
+          _scrambleTitle(_win ? 'FLUSH' : 'CORE DUMP', appear(0.0), glow),
+          const SizedBox(height: 10),
+          _entrance(appear(.06), Text(_subtitle(), textAlign: TextAlign.center, style: NH.mono(size: 11, color: NH.ink2, spacing: .6))),
+          const SizedBox(height: 22),
+          _entrance(appear(.20), _stat('RESULTADO', _win ? 'VICTORIA' : 'DERROTA', _win ? NH.pl : NH.xp)),
+          const SizedBox(height: 8),
+          _entrance(appear(.30), _stat('RONDAS', widget.round.toString().padLeft(2, '0'), const Color(0xFFEAF1FB))),
+          const SizedBox(height: 8),
+          _entrance(appear(.40), _stat('FIRMA', _sig, const Color(0xFFEAF1FB))),
+          if (widget.history.isNotEmpty) ...[
+            const SizedBox(height: 16),
+            _entrance(appear(.52), _historyStrip()),
+          ],
+          const SizedBox(height: 26),
+          _entrance(appear(.66), SizedBox(width: 300, child: BtnWide('REINTENTAR ▸', onTap: widget.onAgain))),
+          const SizedBox(height: 10),
+          _entrance(appear(.76), SizedBox(width: 300, child: BtnWide('VOLVER AL MENÚ', variant: BtnVariant.ghost, onTap: widget.onMenu))),
+        ]),
       ),
     );
+  }
+
+  // Entrada de una sección: fade + slideX desde la izquierda.
+  Widget _entrance(double p, Widget child) =>
+      Opacity(opacity: p, child: Transform.translate(offset: Offset((1 - p) * -14, 0), child: child));
+
+  // Título que "se decodifica": cada carácter pasa por glyphs aleatorios y se fija.
+  Widget _scrambleTitle(String text, double p, Color glow) {
+    const glyphs = r'!<>-_\/[]{}—=+*^?#';
+    final rnd = Random();
+    final resolved = (p * text.length).ceil();
+    final sb = StringBuffer();
+    for (var i = 0; i < text.length; i++) {
+      final ch = text[i];
+      sb.write(ch == ' ' ? ' ' : (i < resolved ? ch : glyphs[rnd.nextInt(glyphs.length)]));
+    }
+    final shown = sb.toString();
+    return Stack(alignment: Alignment.center, children: [
+      Transform.translate(offset: const Offset(-3, 1), child: Text(text, style: NH.disp(size: 46, weight: FontWeight.w700, color: NH.a(NH.xp, .5)))),
+      Transform.translate(offset: const Offset(3, -1), child: Text(text, style: NH.disp(size: 46, weight: FontWeight.w700, color: NH.a(NH.fw, .5)))),
+      Text(shown, style: NH.disp(size: 46, weight: FontWeight.w700, color: Colors.white).copyWith(shadows: [Shadow(color: NH.a(glow, .6), blurRadius: 26)])),
+    ]);
   }
 
   String _subtitle() {
@@ -258,4 +292,53 @@ class _VictoryPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _VictoryPainter old) => old.t != t;
+}
+
+/// Motas verdes que ascienden lentamente en loop (ambiente de victoria).
+class _ParticlesPainter extends CustomPainter {
+  final double t; // 0..1 en loop
+  _ParticlesPainter(this.t);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rnd = Random(7);
+    for (var i = 0; i < 14; i++) {
+      final x = rnd.nextDouble() * size.width;
+      final baseY = rnd.nextDouble();
+      final speed = 0.15 + rnd.nextDouble() * 0.25;
+      final y = ((baseY - t * speed) % 1.0) * size.height;
+      final r = 1 + rnd.nextDouble() * 1.5;
+      final a = 0.2 + rnd.nextDouble() * 0.4;
+      canvas.drawCircle(Offset(x, y), r,
+          Paint()..color = NH.a(NH.pl, a)..maskFilter = const MaskFilter.blur(BlurStyle.normal, 1.5));
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _ParticlesPainter old) => old.t != t;
+}
+
+/// Estática roja residual + scanline muy tenue (rastro del core dump en la derrota).
+class _ResidualStaticPainter extends CustomPainter {
+  final double t; // loop 0..1
+  final double k; // fundido de entrada 0..1
+  _ResidualStaticPainter(this.t, this.k);
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    if (k <= 0) return;
+    final rnd = Random((t * 30).floor());
+    // Unas pocas bandas rojas tenues que parpadean.
+    for (var i = 0; i < 5; i++) {
+      final y = rnd.nextDouble() * size.height;
+      final h = 1 + rnd.nextDouble() * 2;
+      canvas.drawRect(Rect.fromLTWH(0, y, size.width, h), Paint()..color = NH.a(NH.xp, (.02 + rnd.nextDouble() * .04) * k));
+    }
+    // Scanline que desciende despacio.
+    final sy = (t * size.height) % size.height;
+    canvas.drawRect(Rect.fromLTWH(0, sy, size.width, 1.2), Paint()..color = NH.a(NH.xp, .05 * k));
+  }
+
+  @override
+  bool shouldRepaint(covariant _ResidualStaticPainter old) => true;
 }
